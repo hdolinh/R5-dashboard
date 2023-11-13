@@ -135,14 +135,16 @@ usfs_ridb2018 <- raw_ridb2018 %>%
       TRUE ~ park
     ),
     # calculate new variables
-    # NOTEHD: 279 obs of neg length of stay
     lengthofstay = as.numeric(difftime(enddate, startdate), units = "days"), 
-    bookingwindow = as.numeric(difftime(startdate, orderdate), units = "days"),
-    dailycost = totalpaid / lengthofstay,
-    dailycostpervisitor = dailycost / numberofpeople,
+    bookingwindow = round(as.numeric(difftime(startdate, orderdate), units = "days"), 0),
+    dailycost = round(totalpaid / lengthofstay, 2),
+    dailycostpervisitor = round(dailycost / numberofpeople, 2),
     # convert sitetype to title case
     sitetype = str_to_title(sitetype)
   )
+
+test <- usfs_ridb2018 %>% 
+  
   
   
 # 2019-2021 clean and subset ridb ----
@@ -291,29 +293,17 @@ usfs_ridb <- raw_ridb2021 %>%
     sitetype = case_when(
       # day use
       lengthofstay == 0 ~ "Day Use",
-      
+      # remote
+      sitetype %in% c ("Group Walk To", "Walk To", "Destination Zone") |
+        sitetype == "Trailhead" & lengthofstay > 0 ~ "Remote",
       TRUE ~ sitetype
     )
-    # sitetype = case_when(
-    #   # day use; NOTEHD: could probably simplify these conditions
-    #   sitetype %in% c("Entry Point", "Trailhead") & lengthofstay == 0 ~ "Day Use",
-    #   sitetype =="Group Picnic Area" & usetype == "Day" & lengthofstay == 0 ~ "Day Use",
-    #   sitetype == "Management" & usetype == "Day" & lengthofstay == 0 ~ "Day Use",
-    #   sitetype == "Management" & lengthofstay == 0 ~ "Day Use",
-    #   # remote
-    #   sitetype %in% c("Group Walk To", "Walk To", "Destination Zone") |
-    #     sitetype == "Trailhead" & lengthofstay > 0
-    #   ~ "Remote", 
-    #   TRUE ~ sitetype
-    # )
   )
 
 
-# day use test #
-dayuse_test <- usfs_ridb %>% 
-  filter(lengthofstay == 0) %>% 
-  group_by(forestname, park) %>% 
-  summarize(n = n())
+
+remote_test <- usfs_ridb %>% 
+  filter(sitetype == "Remote")
 
 # test sitetype
 site_management <- usfs_ridb %>% 
