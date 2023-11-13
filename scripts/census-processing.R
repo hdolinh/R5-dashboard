@@ -224,6 +224,43 @@ function(geography = "zcta", year, state){
   }
 }
 
+# computer in households acs processing ----
+function(geography = "zcta", year, state){
+  # read in raw data
+  df_computers <- 
+    get_acs(geography = "zcta",
+            year = 2018,
+            state = "California",
+            survey = "acs5",
+            summary_var = "B28003_001", #Estimate!!Total: 
+            variables = c(
+              has_a_computer = "B28003_002", #Estimate!!Total!!Has one or more types of computing devices
+              no_computer = "B28003_006" # Estimate!!Total:!!No computer
+            )) %>% 
+    clean_names() %>% 
+    rename(access_to_computer = variable) %>% 
+    # create column of 5 digit ZIP code
+    mutate(zip_code = str_sub(name, start = -5, end = -1))
+  # calculate percentage
+  df_percent <- 
+    df_computers %>% 
+    group_by(zip_code, access_to_computer) %>% 
+    summarise(estimate = sum(estimate),
+              moe = sum(moe),
+              summary_est = unique(summary_est),
+              summary_moe = unique(summary_moe),
+              percent = estimate / summary_est)
+  
+  # create df
+  if (is.null(state)) {
+    assign(paste0("data_acs_", year, "_race_percent"), 
+           data.frame(df_percent_wider), envir = .GlobalEnv)
+  } else {
+    assign(paste0("data_acs_", year, "_race_percent_", state), 
+           data.frame(df_percent_wider), envir = .GlobalEnv)
+  }
+}
+
 # combine data into one data frame ----
 # use join() or rbind()
 
