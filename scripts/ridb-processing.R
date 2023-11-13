@@ -142,10 +142,6 @@ usfs_ridb2018 <- raw_ridb2018 %>%
     # convert sitetype to title case
     sitetype = str_to_title(sitetype)
   )
-
-test <- usfs_ridb2018 %>% 
-  
-  
   
 # 2019-2021 clean and subset ridb ----
 usfs_ridb <- raw_ridb2021 %>% 
@@ -242,11 +238,11 @@ usfs_ridb <- raw_ridb2021 %>%
                            true = as.numeric(difftime(startdate, enddate), units = "days"),
                            false = lengthofstay),
     # booking window
-    bookingwindow = as.numeric(difftime(startdate, orderdate), units = "days"),
+    bookingwindow = round(as.numeric(difftime(startdate, orderdate), units = "days"), 0),
     # daily cost
-    dailycost = totalpaid / lengthofstay,
+    dailycost = round(totalpaid / lengthofstay, 2),
     # daily cost per visitor
-    dailycostpervisitor = dailycost / numberofpeople,
+    dailycostpervisitor = round(dailycost / numberofpeople, 2),
     # convert sitetype to title case
     sitetype = str_to_title(sitetype),
     # redefine "Management" sitetype for 2019-2021
