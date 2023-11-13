@@ -146,7 +146,7 @@ usfs_ridb2018 <- raw_ridb2018 %>%
   
   
 # 2019-2021 clean and subset ridb ----
-usfs_ridb <- raw_ridb2020 %>% 
+usfs_ridb <- raw_ridb2021 %>% 
   # match colnames
   janitor::clean_names(sep_out = "") %>% 
   # cols of interest
@@ -191,7 +191,8 @@ usfs_ridb <- raw_ridb2020 %>%
     park = str_to_title(park), # 381 tot (2019) 385 tot (2020) 402 tot (2021)
     # string errors
     park = str_remove(string = park,
-                      pattern = paste(c("\\(.*", " \\(.*"), 
+                      pattern = paste(c("\\(.*", " \\(.*", 
+                                        "-.*", " -.*"), 
                                       collapse = "|")),
     park = str_replace(string = park,
                        pattern = "Cg",
@@ -230,11 +231,19 @@ usfs_ridb <- raw_ridb2020 %>%
     # convert back to numeric
     facilitylongitude = as.numeric(facilitylongitude),
     facilitylatitude = as.numeric(facilitylatitude),
-    # calculate new variables
-    # NOTEHD: 279 obs of neg length of stay
+    # calculate new variables #
+    # length of stay
     lengthofstay = as.numeric(difftime(enddate, startdate), units = "days"),
+    # change neg length of stay to positive;
+    # NOTEHD: previous conversations w/ R1S confirm neg start date is data error
+    lengthofstay = if_else(lengthofstay < 0,
+                           true = as.numeric(difftime(startdate, enddate), units = "days"),
+                           false = lengthofstay),
+    # booking window
     bookingwindow = as.numeric(difftime(startdate, orderdate), units = "days"),
+    # daily cost
     dailycost = totalpaid / lengthofstay,
+    # daily cost per visitor
     dailycostpervisitor = dailycost / numberofpeople,
     # convert sitetype to title case
     sitetype = str_to_title(sitetype),
@@ -277,8 +286,14 @@ usfs_ridb <- raw_ridb2020 %>%
                                              "Mono Creek") ~ "Tent Only",
       sitetype == "Management" & park == "Grouse Valley" ~ "Shelter",
       TRUE ~ sitetype
-    )
+    ),
     # aggregate sitetype
+    sitetype = case_when(
+      # day use
+      lengthofstay == 0 ~ "Day Use",
+      
+      TRUE ~ sitetype
+    )
     # sitetype = case_when(
     #   # day use; NOTEHD: could probably simplify these conditions
     #   sitetype %in% c("Entry Point", "Trailhead") & lengthofstay == 0 ~ "Day Use",
@@ -294,8 +309,13 @@ usfs_ridb <- raw_ridb2020 %>%
   )
 
 
-# test sitetype
+# day use test #
+dayuse_test <- usfs_ridb %>% 
+  filter(lengthofstay == 0) %>% 
+  group_by(forestname, park) %>% 
+  summarize(n = n())
 
+# test sitetype
 site_management <- usfs_ridb %>% 
   filter(park == "Agnew Horse Camp") %>% 
   group_by(sitetype) %>% 
@@ -311,8 +331,31 @@ site_park_test <- usfs_ridb %>%
   group_by(lengthofstay) %>% 
   summarize(n = n())
 
+## neg length of stay ##
+# 2018 tot 0
+# 2019 tot 424
+# 2020 tot 202
+# 2021 tot 279
 lengthofstay_test <- usfs_ridb %>%
   filter(lengthofstay < 0)
-  # group_by(lengthofstay, park) %>%
+
+# ~1.8% of 2018 data (tot 306,518)
+zipcode2018_test <- usfs_ridb2018 %>% 
+  filter(is.na(customerzip) == TRUE)# %>% 
+  # group_by(forestname) %>% 
   # summarize(n = n())
-  # 
+
+# ~37% of 2019 data (tot 363,714)
+zipcode2019_test <- usfs_ridb %>% 
+  filter(is.na(customerzip) == TRUE)
+
+# ~26% of 2020 data (tot 520,568)
+zipcode2020_test <- usfs_ridb %>% 
+  filter(is.na(customerzip) == TRUE)# %>% 
+  # group_by(forestname) %>% 
+  # summarize(n = n())
+
+# ~23% of 2021 data (tot 607,766)
+zipcode2021_test <- usfs_ridb %>% 
+  filter(is.na(customerzip) == TRUE)
+
