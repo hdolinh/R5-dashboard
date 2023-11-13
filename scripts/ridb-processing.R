@@ -142,6 +142,11 @@ usfs_ridb2018 <- raw_ridb2018 %>%
     # convert sitetype to title case
     sitetype = str_to_title(sitetype)
   )
+
+test2018 <- usfs_ridb2018 %>% 
+  filter(sitetype == "Yurt") %>% 
+  count(park)
+
   
 # 2019-2021 clean and subset ridb ----
 usfs_ridb <- raw_ridb2021 %>% 
@@ -182,7 +187,7 @@ usfs_ridb <- raw_ridb2021 %>%
     forestname = case_when(forestname == "SHASTA-TRINITY NATIONAL FOREST" ~ "Shasta-Trinity National Forest",
                            TRUE ~ forestname)
   ) %>%
-  # rm forests not in R5; forestname var comes from spatial data script
+  # rm forests not in R5; forestname_R5 var comes from spatial data script
   filter(forestname %in% forestname_R5) %>% 
   # clean park #
   mutate(
@@ -288,34 +293,77 @@ usfs_ridb <- raw_ridb2021 %>%
     # aggregate sitetype
     sitetype = case_when(
       # day use
-      lengthofstay == 0 ~ "Day Use",
+      lengthofstay == 0 |
+        sitetype == "Entry Point" & park == "Cedar Creek Falls" ~ "Day Use",
       # remote
-      sitetype %in% c ("Group Walk To", "Walk To", "Destination Zone") |
-        sitetype == "Trailhead" & lengthofstay > 0 ~ "Remote",
+      sitetype %in% c("Group Walk To", 
+                      "Walk To", 
+                      "Destination Zone") |
+        sitetype == "Trailhead" & lengthofstay > 0 |
+        sitetype %in% c("Trailhead", 
+                        "Entry Point") & park %in% c("Sierra National Forest Wilderness Permits",
+                                                     "Inyo National Forest",
+                                                     "Mt. Whitney") ~ "Remote",
+      # shelter
+      sitetype %in% c("Cabin Electric",
+                      "Cabin Nonelectric",
+                      "Group Shelter Nonelectric",
+                      "Shelter Nonelectric",
+                      "Yurt") ~ "Shelter",
+      # water
+      sitetype == "Boat In" |
+        sitetype == "Entry Point" & park == "Tuolumne River Permits" ~ "Water",
+      # equestrian
+      sitetype %in% c("Equestrian Nonelectric", 
+                      "Group Equestrian") ~ "Equestrian",
+      # rv only
+      sitetype %in% c("Group Rv Area Nonelectric", 
+                      "Rv Electric",
+                      "Rv Nonelectric") ~ "RV Only",
+      # tent only
+      # sitetype %in% c("Group Tent Only Area Nonelectric",
+      #                 "Tent Only Electric",
+      #                 "Tent Only Nonelectric") |
+      #   sitetype == "Entry Point" & lengthofstay > 0 ~ "Tent Only",
+      # rv or tent
+      sitetype %in% c("Group Standard Area Nonelectric",
+                      "Group Standard Electric",
+                      "Group Standard Nonelectric",
+                      "RV or Tent Only",
+                      "Standard Nonelectric",
+                      "Standard Electric") ~ "RV or Tent",
       TRUE ~ sitetype
     )
   )
 
+test <- usfs_ridb %>% 
+  filter(sitetype == "Entry Point")
 
-
+# notes ----
+## adding 'Yurt' to park leave it alone for now... ##
+# note that all parks with 'Shelter' sitetype that doesn't say cabin in
+# park name means it was most likely a 'Yurt' sitetype originally
 remote_test <- usfs_ridb %>% 
-  filter(sitetype == "Remote")
+  filter(sitetype == "Yurt") %>% 
+  mutate(
+    park = if_else(str_detect(sitetype, "Yurt") == TRUE,
+                   true = paste0(park, " Yurt"),
+                   false = park,
+                   missing = park),
+  ) %>% 
+  count(park)
 
-# test sitetype
-site_management <- usfs_ridb %>% 
-  filter(park == "Agnew Horse Camp") %>% 
-  group_by(sitetype) %>% 
-  summarize(n = n())
-
-site_test <- usfs_ridb %>% 
-  filter(sitetype == "Remote") %>% 
-  group_by(forestname, park, usetype) %>% 
-  summarize(n = n())
-
-site_park_test <- usfs_ridb %>% 
-  filter(park == "Onion Valley") %>% 
-  group_by(lengthofstay) %>% 
-  summarize(n = n())
+remote_test2018 <- usfs_ridb2018 %>% 
+  filter(sitetype == "Yurt") %>% 
+  group_by(park, sitetype) %>% 
+  summarize(n = n()) %>% 
+  mutate(
+    # adding 'Yurt' to park
+    park = if_else(str_detect(sitetype, "Yurt") == TRUE,
+                   true = str_replace(park, park, paste0(park, " Yurt")),
+                   false = park,
+                   missing = park),
+  )
 
 ## neg length of stay ##
 # 2018 tot 0
@@ -325,6 +373,7 @@ site_park_test <- usfs_ridb %>%
 lengthofstay_test <- usfs_ridb %>%
   filter(lengthofstay < 0)
 
+## customer zip code NA ##
 # ~1.8% of 2018 data (tot 306,518)
 zipcode2018_test <- usfs_ridb2018 %>% 
   filter(is.na(customerzip) == TRUE)# %>% 
