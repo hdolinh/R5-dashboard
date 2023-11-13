@@ -1,5 +1,4 @@
 # to do ----
-# aggregate sitetype
 # calculate distance traveled
 # add customer state
 
@@ -321,10 +320,10 @@ usfs_ridb <- raw_ridb2021 %>%
                       "Rv Electric",
                       "Rv Nonelectric") ~ "RV Only",
       # tent only
-      # sitetype %in% c("Group Tent Only Area Nonelectric",
-      #                 "Tent Only Electric",
-      #                 "Tent Only Nonelectric") |
-      #   sitetype == "Entry Point" & lengthofstay > 0 ~ "Tent Only",
+      sitetype %in% c("Group Tent Only Area Nonelectric",
+                      "Tent Only Electric",
+                      "Tent Only Nonelectric") |
+        sitetype == "Entry Point" & lengthofstay > 0 ~ "Tent Only",
       # rv or tent
       sitetype %in% c("Group Standard Area Nonelectric",
                       "Group Standard Electric",
@@ -335,9 +334,6 @@ usfs_ridb <- raw_ridb2021 %>%
       TRUE ~ sitetype
     )
   )
-
-test <- usfs_ridb %>% 
-  filter(sitetype == "Entry Point")
 
 # notes ----
 ## adding 'Yurt' to park leave it alone for now... ##
