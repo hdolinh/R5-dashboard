@@ -341,7 +341,7 @@ ridb_state <- left_join(
 
 # calculate distance traveled ----
 # bootstrap geometries and reproject to NAD 83
-df_geometries <- usfs_ridb %>% 
+df_geometries <- ridb_state %>% 
   st_as_sf(coords = c("facilitylongitude", "facilitylatitude"),
            crs = 4326) %>% 
   st_transform(crs = 4269) # using NAD83 because measured in meters
