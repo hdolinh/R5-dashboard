@@ -1,6 +1,3 @@
-# to do ----
-# calculate distance traveled
-# add customer state
 
 # setup ----
 library(vroom)
@@ -10,6 +7,15 @@ library(janitor)
 library(zipcodeR)
 
 # read in data ----
+
+## get data() ----
+get_data <- function(fp, fp_df, raw_df) {
+  
+  fp_name <- here(fp)
+  df <- vroom(fp_name)
+  
+}
+
 # 2018 ridb data
 fp_ridb2018 <- here("data/ridb/raw/reservations2018.csv")
 raw_ridb2018 <- vroom(fp_ridb2018)
