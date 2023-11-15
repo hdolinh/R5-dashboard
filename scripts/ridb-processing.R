@@ -297,7 +297,6 @@ usfs_ridb <- raw_ridb2018 %>%
     )
   )
 
-
 # add state for each ZIP code ----
 # create df of fips and full state names
 fips_list <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
@@ -308,11 +307,11 @@ fips_list <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12",
                "56", "72")
 
 state_list <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
-                    "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
-                    "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
-                    "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
-                    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
-                    "WY", "PR")
+                "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
+                "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
+                "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+                "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
+                "WY", "PR")
 
 states_full_names_list <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", 
                             "Colorado", "Connecticut", "Delaware", "District of Columbia",
@@ -329,40 +328,23 @@ df_states_fips <- as.data.frame(list(fips = fips_list,
                                      state = state_list,
                                      state_full = states_full_names_list))
 
+zipcode_db <- zipcodeR::zip_code_db %>% 
+  select(zipcode,
+         state,
+         # county,
+         # major_city,
+         # lat,
+         # lng
+         ) %>% 
+  left_join(df_states_fips, by = "state") %>% 
+  relocate(fips, .before = state) %>% 
+  relocate(state_full, .after = state) #%>% 
+  # rename(customerlng = lng) %>% 
+  # rename(customerlat = lat)
 
-# testing zip codes ----
-
-# ridb_zipcodes <- as.data.frame(list(customer_zip = usfs_ridb$customerzip))
-
-# zip_state <- zipcodeR::reverse_zipcode(ridb_zipcodes$customer_zip)
-
-  
-# loop through state df to get all ZIP codes w/in state
-df_states_zip_codes <- data.frame()
-
-for (i in seq_along(fips_list)){
-  state <- zipcodeR::search_fips(state_fips = fips_list[[i]]) %>% 
-    select(zipcode, state)
-  
-  df_states_zip_codes <- rbind(df_states_zip_codes, state)
-}
-
-# add full state name and fips code to list of all ZIP codes for each state
-df_states_fips_zip_codes <- 
-  left_join(x = df_states_zip_codes,
-            y = df_states_fips,
-            by = "state") %>% 
-  select(-fips) %>% 
-  rename(customerstate = state,
-         customerstatefull = state_full,
-         customerzip = zipcode)
-
-# join RIDB data with state data
-ridb_state <- left_join(
-  usfs_ridb, df_states_fips_zip_codes, by = "customerzip"
-) %>% 
-  relocate(customerstate, .after = customerzip) %>% 
-  relocate(customerstatefull, .after = customerstate)
+# df with customer state info
+usfs_ridb <- usfs_ridb %>%
+  left_join(zipcode_db, by = c("customerzip" = "zipcode"))
 
 # calculate distance traveled ----
 # NOTEHD: Need to clean up, turn into function
