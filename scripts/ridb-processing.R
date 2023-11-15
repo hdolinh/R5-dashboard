@@ -35,7 +35,7 @@ fp_ridb2021 <- here("data/ridb/raw/FY21 Historical Reservations Full.csv")
 raw_ridb2021 <- vroom(fp_ridb2021)
 
 # combined processing ----
-usfs_ridb <- raw_ridb2021 %>% 
+usfs_ridb <- raw_ridb2020 %>% 
   # add sept_out to rm `_` to match column names
   janitor::clean_names(sep_out = "") %>% 
   
@@ -82,14 +82,7 @@ usfs_ridb <- raw_ridb2021 %>%
   mutate(facilityzip = as.character(facilityzip)) %>% 
   
   ## fill in missing facility zip codes ##
-  # NOTEHD: zip codes come from
-  # mutate(facilityzip = case_when(
-  #   # Angeles NF
-  #   forestname == "Angeles National Forest" & park == "Pyramid Lake Los Alamos Campground" ~ "",
-  #   forestname == "" & park == "" ~ "",
-  #   TRUE ~ facilityzip
-  #   
-  # )) %>% 
+  # NOTEHD: zip codes come from google api via `ggmap`
   
   ## clean forestname ##
   # 1. rename parentlocation to forestname
@@ -183,12 +176,13 @@ usfs_ridb <- raw_ridb2021 %>%
     facilitylatitude = as.character(facilitylatitude),
     # b. use lat/long to fill in missing park values
     park = case_when(
-      facilitylatitude == "38.477308" & facilitylongitude == "-120.024175" ~ "Lodgepole Overflow Campground",
+      facilitylatitude == "38.477308" & facilitylongitude == "-120.024175" ~ "Lodgepole Group Campground",
       facilitylatitude == "38.4811" & facilitylongitude == "-120.017" ~ "Silvertip Campground",
       facilitylatitude == "38.480752" & facilitylongitude == "-119.988643" ~ "Pine Marten Campground", # 2021 data
       facilitylatitude == "38.4815" & facilitylongitude == "-119.989" ~ "Pine Marten Campground", # 2019 data
       facilitylatitude == "38.4802" & facilitylongitude == "-119.985" ~ "Silver Valley Campground",
-      facilitylatitude == "38.477333" & facilitylongitude == "-120.008045" ~ "Lake Alpine West Shore Campground",
+      facilitylatitude == "38.477333" & facilitylongitude == "-120.008045" ~ "Lake Alpine Campground",
+      facilitylatitude == "38.4163889" & facilitylongitude == "-120.105" ~ "Big Meadow",
       TRUE ~ park
     ),
     # c. convert lat/long back to numeric
@@ -306,38 +300,10 @@ usfs_ridb <- raw_ridb2021 %>%
     )
   )
 
-
-
-test <- usfs_ridb %>% 
-  filter(is.na(facilityzip) == TRUE) %>% 
-  group_by(forestname,
-           park,
-           facilityzip,
-           facilitylongitude,
-           facilitylatitude
-           ) %>% 
-  summarize(n = n()) %>% 
-  mutate(
-    facilityzip = ggmap::revgeocode()
-  )
-
-unique_parks_usfs_ridb2021 <- usfs_ridb %>% 
-  group_by(forestname,
-           park,
-           facilityzip,
-           facilitylongitude,
-           facilitylatitude) %>% 
-  summarize(n = n()) %>% 
-  select(!n)n
-
-# small test for Pyramid Lake Los Alamos Campground
-lon <- -118.7667
-lat <- 34.65000
-result <- revgeocode(c(lon, lat), output = "all")
-
-
 # add state for each ZIP code ----
 # create df of fips and full state names
+# NOTEHD: df_states_fips is from outdoor equity code
+# create only if we need fips and state full names
 fips_list <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
                "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", 
                "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", 
@@ -385,74 +351,31 @@ zipcode_db <- zipcodeR::zip_code_db %>%
 usfs_ridb <- usfs_ridb %>%
   left_join(zipcode_db, by = c("customerzip" = "zipcode"), multiple = "all")
 
+# move columns + add FY col
+# NOTEHD: rerun for each year, change year as needed
+usfs_ridb2020 <- usfs_ridb %>% 
+  relocate(fips, .after = customerzip) %>% 
+  relocate(state, .after = fips) %>% 
+  relocate(state_full, .after = state) %>% 
+  mutate(fy = as.factor(2020)) %>% 
+  relocate(fy, .before = historicalreservationid)
+  
 # calculate distance traveled ----
-usfs_ridb <- usfs_ridb %>% 
-  mutate(dist_traveled = zipcodeR::zip_distance(facilityzip, customerzip))
-
-# NOTEHD: Need to clean up, turn into function
-# zipcodeR_db <- zipcodeR::zip_code_db %>% 
-#   select(zipcode, major_city, county, state,
-#          lat, lng)
-
-# ridb_dist_traveled <- usfs_ridb %>% 
-#   select(forestname, park, facilityzip, customerzip) %>% 
-#   left_join(zipcodeR_db,
-#             by = c("customerzip" = "zipcode")) %>% 
-#   mutate(dist_traveled = zipcodeR::zip_distance(facilityzip, customerzip))
-
-zipcode_a <- as.character(usfs_ridb$facilityzip)
-zipcode_b <- as.character(usfs_ridb$customerzip)
-
-# assemble zipcodes in dataframe
-zip_data <- data.frame(zipcode_a, zipcode_b)
-
-# create subset of zip_code_db with only zipcode, lat, and lng
-zip_db_small <- zipcodeR::zip_code_db %>%
-  dplyr::select(zipcode, lat, lng) %>%
-  # NOTEHD: 21% of data is NA
-  dplyr::filter(lat != "NA" & lng != "NA") 
-
-test <- zipcodeR::zip_code_db %>% 
-  filter(is.na(lat) == TRUE)
-
-# join input data with zip_code_db
-zip_data <- zip_data %>%
-  dplyr::left_join(zip_db_small, by = c('zipcode_a' = 'zipcode')) %>%
-  dplyr::left_join(zip_db_small, by = c('zipcode_b' = 'zipcode'), suffix = c('.a', '.b'))
-
-# assemble matrices for distance calculation
-points_a <- cbind(cbind(zip_data$lng.a, zip_data$lat.a))
-points_b <- cbind(cbind(zip_data$lng.b, zip_data$lat.b))
-
-# Calculate the distance matrix between both sets of points
-distance <- raster::pointDistance(points_a, points_b, lonlat = TRUE)
-
-# Convert the distance matrix from meters to miles
-if (units == "miles") {
-  distance <- distance * 0.000621371
-}
-
-# Round to 2 decimal places to match search_radius()
-distance <- round(distance, digits = 2)
-
-# Put together the results in a data.frame
-result <- data.frame(zipcode_a, zipcode_b, distance)
-
-result_na <- result %>% 
-  filter(is.na(zipcode_a) == TRUE)
+# see ridb-dist-traveled.R script
 
 # combine data ----
-# 2018
-# NOTEHD: processed (300809 obs)
-
-# 2018 + 2019
-
-# 2018 + 2019 + 2020
-
-# 2018 + 2019 + 2020 + 2021
+# 2018 processed (300,809 obs)
+# 2019 processed (228,956 obs)
+# 2020 processed (387,564 obs)
+# 2021 processed (469,376 obs)
+# grand total 1,386,705 obs
+usfs_ridb_all <- usfs_ridb2018 %>%
+  rbind(usfs_ridb2019,
+        usfs_ridb2020,
+        usfs_ridb2021)
 
 # save data ----
-write_csv(usfs_ridb, here("data/ridb/clean/usfs_ridb.csv"))
+write_csv(usfs_ridb_all, here("data/ridb/clean/usfs_ridb_all.csv"))
 
 # testing ----
 test_park2018 <- raw_ridb2018 %>% 
