@@ -6,6 +6,7 @@ library(tidyverse)
 library(janitor)
 library(zipcodeR)
 library(tidycensus)
+library(ggmap) # citation("ggmap")
 
 # read in data ----
 
@@ -34,7 +35,7 @@ fp_ridb2021 <- here("data/ridb/raw/FY21 Historical Reservations Full.csv")
 raw_ridb2021 <- vroom(fp_ridb2021)
 
 # combined processing ----
-usfs_ridb <- raw_ridb2018 %>% 
+usfs_ridb <- raw_ridb2021 %>% 
   # add sept_out to rm `_` to match column names
   janitor::clean_names(sep_out = "") %>% 
   
@@ -64,13 +65,21 @@ usfs_ridb <- raw_ridb2018 %>%
   filter(agency == "USFS" & facilitystate == "California") %>% 
   
   ## clean customer zip codes ##
-  # 1. extract 5 digit customer zip codes 
-  mutate(customerzip = str_extract(string = customerzip,
-                                   pattern = "[:digit:]{5}")) %>% 
-  # 2. rm invalid customer zip codes
+  # 1. make sure all zip codes are class character
+  mutate(
+    customerzip = as.character(customerzip),
+    # 2. extract 5 digit customer zip codes
+    customerzip = str_extract(string = customerzip,
+                              pattern = "[:digit:]{5}")
+  ) %>% 
+  # 3. rm invalid customer zip codes
   filter(!customerzip %in% c("00000", "99999")) %>%
-  # 3. rm NA customer zip codes
+  # 4. rm NA customer zip codes
   drop_na(customerzip) %>% 
+  
+  ## clean facility zip codes ##
+  # 1. make sure all zip codes are class character
+  mutate(facilityzip = as.character(facilityzip)) %>% 
   
   ## fill in missing facility zip codes ##
   # NOTEHD: zip codes come from
@@ -297,6 +306,36 @@ usfs_ridb <- raw_ridb2018 %>%
     )
   )
 
+
+
+test <- usfs_ridb %>% 
+  filter(is.na(facilityzip) == TRUE) %>% 
+  group_by(forestname,
+           park,
+           facilityzip,
+           facilitylongitude,
+           facilitylatitude
+           ) %>% 
+  summarize(n = n()) %>% 
+  mutate(
+    facilityzip = ggmap::revgeocode()
+  )
+
+unique_parks_usfs_ridb2021 <- usfs_ridb %>% 
+  group_by(forestname,
+           park,
+           facilityzip,
+           facilitylongitude,
+           facilitylatitude) %>% 
+  summarize(n = n()) %>% 
+  select(!n)n
+
+# small test for Pyramid Lake Los Alamos Campground
+lon <- -118.7667
+lat <- 34.65000
+result <- revgeocode(c(lon, lat), output = "all")
+
+
 # add state for each ZIP code ----
 # create df of fips and full state names
 fips_list <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
@@ -344,30 +383,37 @@ zipcode_db <- zipcodeR::zip_code_db %>%
 
 # df with customer state info
 usfs_ridb <- usfs_ridb %>%
-  left_join(zipcode_db, by = c("customerzip" = "zipcode"))
+  left_join(zipcode_db, by = c("customerzip" = "zipcode"), multiple = "all")
 
 # calculate distance traveled ----
-# NOTEHD: Need to clean up, turn into function
-zipcodeR_db <- zipcodeR::zip_code_db %>% 
-  select(zipcode, major_city, county, state,
-         lat, lng)
-
-ridb_dist_traveled <- usfs_ridb %>% 
-  select(forestname, park, facilityzip, customerzip) %>% 
-  left_join(zipcodeR_db,
-            by = c("customerzip" = "zipcode")) %>% 
+usfs_ridb <- usfs_ridb %>% 
   mutate(dist_traveled = zipcodeR::zip_distance(facilityzip, customerzip))
 
-zipcode_a <- as.character(ridb_dist_traveled$facilityzip)
-zipcode_b <- as.character(ridb_dist_traveled$customerzip)
+# NOTEHD: Need to clean up, turn into function
+# zipcodeR_db <- zipcodeR::zip_code_db %>% 
+#   select(zipcode, major_city, county, state,
+#          lat, lng)
+
+# ridb_dist_traveled <- usfs_ridb %>% 
+#   select(forestname, park, facilityzip, customerzip) %>% 
+#   left_join(zipcodeR_db,
+#             by = c("customerzip" = "zipcode")) %>% 
+#   mutate(dist_traveled = zipcodeR::zip_distance(facilityzip, customerzip))
+
+zipcode_a <- as.character(usfs_ridb$facilityzip)
+zipcode_b <- as.character(usfs_ridb$customerzip)
 
 # assemble zipcodes in dataframe
 zip_data <- data.frame(zipcode_a, zipcode_b)
 
 # create subset of zip_code_db with only zipcode, lat, and lng
-zip_db_small <- zip_code_db %>%
+zip_db_small <- zipcodeR::zip_code_db %>%
   dplyr::select(zipcode, lat, lng) %>%
-  dplyr::filter(lat != "NA" & lng != "NA")
+  # NOTEHD: 21% of data is NA
+  dplyr::filter(lat != "NA" & lng != "NA") 
+
+test <- zipcodeR::zip_code_db %>% 
+  filter(is.na(lat) == TRUE)
 
 # join input data with zip_code_db
 zip_data <- zip_data %>%
