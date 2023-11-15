@@ -15,18 +15,32 @@ output:
         google: Fira Code
       heading_font:
         google: Nunito
-    orientation: rows
 runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(mapview)
+library(here)
+library(sf)
+library(vroom)
+library(dplyr)
+library(leaflet)
 # bslib::bs_themer()
 # Install thematic and un-comment for themed static plots (i.e., ggplot2)
 # thematic::thematic_rmd()
 ```
 
-# Page One
+```{r read in data}
+# spatial 
+r5_au_bounds <- read_sf(here("data/spatial/clean/"))
+
+# ridb
+usfs_ridb_all <- vroom(here("data/ridb/clean/usfs_ridb_all.csv"))
+```
+
+
+# Page One {data-orientation=rows}
 
 ## Row
 
@@ -60,8 +74,7 @@ valueBox(4, color = "warning")
 valueBox(5, color = "danger")
 ```
 
-Column {data-width=350}
------------------------------------------------------------------------
+## Row 2 {data-width=350}
 
 ### Chart C
 
@@ -74,4 +87,59 @@ Column {data-width=350}
 ```{r}
 
 ```
+
+# Rec-Sheds / Visitorsheds {data-orientation=rows}
+
+## Sidebar {.sidebar}
+
+Who is visiting the [Pacific Southwest Region](https://www.fs.usda.gov/r5) (R5)?
+
+## Row 1
+
+### Total number of visits
+
+```{r}
+valueBox(prettyNum(nrow(usfs_ridb_all), big.mark = ","), 
+         color = "success")
+```
+
+
+### State with the most visits
+
+```{r}
+visits_by_state <- usfs_ridb_all %>% 
+  count(state_full) %>% 
+  filter(n == max(n))
+
+valueBox(paste0(prettyNum(visits_by_state$n, big.mark = ","),
+                " visits from ",
+                visits_by_state$state_full),
+         color = "info")
+```
+
+## Row 2
+
+### Map {.no-title}
+
+```{r, echo=FALSE}
+r5_sites <- usfs_ridb_all %>%
+  group_by(forestname,
+           park,
+           facilitylongitude,
+           facilitylatitude) %>% 
+  summarize(n = n()) %>% 
+  select(!n) %>%
+  st_as_sf(coords = c("facilitylongitude", "facilitylatitude"), crs = 4326)
+```
+
+
+```{r}
+mapview(list(r5_au_bounds, r5_sites))
+```
+
+
+
+
+
+
 
