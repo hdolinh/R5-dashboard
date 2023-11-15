@@ -5,6 +5,7 @@ library(here)
 library(tidyverse)
 library(janitor)
 library(zipcodeR)
+library(tidycensus)
 
 # read in data ----
 
@@ -33,7 +34,7 @@ fp_ridb2021 <- here("data/ridb/raw/FY21 Historical Reservations Full.csv")
 raw_ridb2021 <- vroom(fp_ridb2021)
 
 # combined processing ----
-usfs_ridb <- raw_ridb2021 %>% 
+usfs_ridb <- raw_ridb2018 %>% 
   # add sept_out to rm `_` to match column names
   janitor::clean_names(sep_out = "") %>% 
   
@@ -70,6 +71,16 @@ usfs_ridb <- raw_ridb2021 %>%
   filter(!customerzip %in% c("00000", "99999")) %>%
   # 3. rm NA customer zip codes
   drop_na(customerzip) %>% 
+  
+  ## fill in missing facility zip codes ##
+  # NOTEHD: zip codes come from
+  # mutate(facilityzip = case_when(
+  #   # Angeles NF
+  #   forestname == "Angeles National Forest" & park == "Pyramid Lake Los Alamos Campground" ~ "",
+  #   forestname == "" & park == "" ~ "",
+  #   TRUE ~ facilityzip
+  #   
+  # )) %>% 
   
   ## clean forestname ##
   # 1. rename parentlocation to forestname
@@ -157,6 +168,7 @@ usfs_ridb <- raw_ridb2021 %>%
       TRUE ~ park
     ),
     # 4. fill in missing park values 
+    # NOTEHD: step 4 is crfor 2019-2021 data
     # a. convert to char to reveal full coordinate
     facilitylongitude = as.character(facilitylongitude),
     facilitylatitude = as.character(facilitylatitude),
@@ -315,9 +327,16 @@ states_full_names_list <- c("Alabama", "Alaska", "Arizona", "Arkansas", "Califor
 
 df_states_fips <- as.data.frame(list(fips = fips_list,
                                      state = state_list,
-                                     state_full = states_names_list))
+                                     state_full = states_full_names_list))
 
 
+# testing zip codes ----
+
+# ridb_zipcodes <- as.data.frame(list(customer_zip = usfs_ridb$customerzip))
+
+# zip_state <- zipcodeR::reverse_zipcode(ridb_zipcodes$customer_zip)
+
+  
 # loop through state df to get all ZIP codes w/in state
 df_states_zip_codes <- data.frame()
 
@@ -346,43 +365,63 @@ ridb_state <- left_join(
   relocate(customerstatefull, .after = customerstate)
 
 # calculate distance traveled ----
-# bootstrap geometries and reproject to NAD 83
-df_geometries <- ridb_state %>% 
-  st_as_sf(coords = c("facilitylongitude", "facilitylatitude"),
-           crs = 4326) %>% 
-  st_transform(crs = 4269) # using NAD83 because measured in meters
+# NOTEHD: Need to clean up, turn into function
+zipcodeR_db <- zipcodeR::zip_code_db %>% 
+  select(zipcode, major_city, county, state,
+         lat, lng)
 
-# get centroid of geometries for all US ZIP codes 
-df_zip_centroids_us <- get_acs(geography = "zcta", year = 2018, geometry = TRUE, 
-                               summary_var = "B01001_001",
-                               survey = "acs5",
-                               variables = c(male = "B01001_002")) %>% 
-  select(NAME, geometry) %>% 
-  mutate(zip_code = str_sub(NAME, start = -5, end = -1)) %>% 
-  select(zip_code, geometry) %>% 
-  st_centroid()
+ridb_dist_traveled <- usfs_ridb %>% 
+  select(forestname, park, facilityzip, customerzip) %>% 
+  left_join(zipcodeR_db,
+            by = c("customerzip" = "zipcode")) %>% 
+  mutate(dist_traveled = zipcodeR::zip_distance(facilityzip, customerzip))
 
-# join data and calculate `distance_traveled` variable
-df_joined_geometries <- 
-  left_join(x = df_geometries %>% as.data.frame(),
-            y = df_zip_centroids_us %>% as.data.frame(), 
-            by = c("customerzip" = "zip_code")) %>%
-  st_sf(sf_column_name = 'geometry.x') %>% 
-  mutate(distance_traveled_m = st_distance(x = geometry.x, 
-                                           y = geometry.y,
-                                           by_element = TRUE),
-         distance_traveled_m = as.numeric(distance_traveled_m))
+zipcode_a <- as.character(ridb_dist_traveled$facilityzip)
+zipcode_b <- as.character(ridb_dist_traveled$customerzip)
 
-# convert back to data.frame (from sf data.frame), remove geometries
-df_joined <- df_joined_geometries %>% 
-  as.data.frame() %>% 
-  extract(col = geometry.x, 
-          into = c('facility_latitude', 'facility_longitude'), 
-          regex = '\\((.*), (.*)\\)', 
-          convert = TRUE, remove = TRUE) %>% 
-  select(-geometry.y)
+# assemble zipcodes in dataframe
+zip_data <- data.frame(zipcode_a, zipcode_b)
+
+# create subset of zip_code_db with only zipcode, lat, and lng
+zip_db_small <- zip_code_db %>%
+  dplyr::select(zipcode, lat, lng) %>%
+  dplyr::filter(lat != "NA" & lng != "NA")
+
+# join input data with zip_code_db
+zip_data <- zip_data %>%
+  dplyr::left_join(zip_db_small, by = c('zipcode_a' = 'zipcode')) %>%
+  dplyr::left_join(zip_db_small, by = c('zipcode_b' = 'zipcode'), suffix = c('.a', '.b'))
+
+# assemble matrices for distance calculation
+points_a <- cbind(cbind(zip_data$lng.a, zip_data$lat.a))
+points_b <- cbind(cbind(zip_data$lng.b, zip_data$lat.b))
+
+# Calculate the distance matrix between both sets of points
+distance <- raster::pointDistance(points_a, points_b, lonlat = TRUE)
+
+# Convert the distance matrix from meters to miles
+if (units == "miles") {
+  distance <- distance * 0.000621371
+}
+
+# Round to 2 decimal places to match search_radius()
+distance <- round(distance, digits = 2)
+
+# Put together the results in a data.frame
+result <- data.frame(zipcode_a, zipcode_b, distance)
+
+result_na <- result %>% 
+  filter(is.na(zipcode_a) == TRUE)
 
 # combine data ----
+# 2018
+# NOTEHD: processed (300809 obs)
+
+# 2018 + 2019
+
+# 2018 + 2019 + 2020
+
+# 2018 + 2019 + 2020 + 2021
 
 # save data ----
 write_csv(usfs_ridb, here("data/ridb/clean/usfs_ridb.csv"))
