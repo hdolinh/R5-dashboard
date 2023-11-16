@@ -3,6 +3,8 @@
 library(tidyverse)
 library(here)
 library(tidycensus)
+library(janitor)
+library(zipcodeR)
 
 # read in/load data ----
 # run in Console:
@@ -13,9 +15,11 @@ function(geography = "zcta", year, state){
   # read in raw data
   df_race <- 
     get_acs(geography = "zcta",
-            year = 2018,
-            state = "California",
-            survey = "acs5",
+            # year = 2018,
+            ## NOTEHD: As of the 2020 ACS, 
+            ## subsetting by state is no longer supported for ZCTAs on the API side
+            # state = "California", 
+            # survey = "acs5",
             summary_var = "B03002_001", #Estimate!!Total: 
             variables = c(
               white = "B03002_003", #Estimate!!Total!!Not Hispanic or Latino!!White alone
@@ -31,15 +35,26 @@ function(geography = "zcta", year, state){
     rename(race = variable) %>% 
     # create column of 5 digit ZIP code
     mutate(zip_code = str_sub(name, start = -5, end = -1))
+  
+  # CA zip codes
+  zipCA <- zipcodeR::zip_code_db %>% filter(state == "CA")
+  
+  zipCA <- as.vector(zipCA$zipcode)
+  
   # calculate percentage
   df_percent <- 
     df_race %>% 
+    # just CA zips
+    filter(zip_code %in% zipCA) %>% 
     group_by(zip_code, race) %>% 
     summarise(estimate = sum(estimate),
               moe = sum(moe),
               summary_est = unique(summary_est),
               summary_moe = unique(summary_moe),
               percent = estimate / summary_est)
+  
+  # df_race <- df_percent
+  
   # create column for each percentage for each group (pivot wider)
   # necessary to be able to left_join() with RIDB data
   df_percent_wider <- 
@@ -48,6 +63,9 @@ function(geography = "zcta", year, state){
     rename(zip_code_population = summary_est) %>% 
     pivot_wider(names_from = "race",
                 values_from = "percent")
+  
+  # race df ----
+  race_acs_df <- df_percent_wider
   
   # create df
   if (is.null(state)) {
@@ -62,11 +80,11 @@ function(geography = "zcta", year, state){
 # education acs processing ----
 function(geography = "zcta", year, state){
   # read in raw data
-  df_edu_2018 <- 
+  df_edu <- 
     get_acs(geography = "zcta",
-            year = 2018,
-            state = "California",
-            survey = "acs5",
+            # year = 2018,
+            # state = "California",
+            # survey = "acs5",
             summary_var = "B15003_001", # Estimate!!Total:
             variables = c(
               # Estimate!!Total:!!GED or alternative credential or below (including above)
@@ -102,6 +120,7 @@ function(geography = "zcta", year, state){
     rename(education = variable) %>% 
     # create ZIP column with just 5 digit numbers
     mutate(zip_code = str_sub(name, start = -5, end = -1))
+  
   # calculate percentage
   df_percent <- 
     df_edu %>% 
@@ -111,6 +130,10 @@ function(geography = "zcta", year, state){
               summary_est = unique(summary_est),
               summary_moe = unique(summary_moe),
               percent = estimate / summary_est)
+  
+  # df_education <- df_percent %>% 
+  #   rename(perf)
+  
   # create column for each percentage for each group (pivot wider)
   # necessary to be able to left_join() with RIDB data
   df_percent_wider <- 
@@ -119,6 +142,10 @@ function(geography = "zcta", year, state){
     rename(zip_code_population = summary_est) %>% 
     pivot_wider(names_from = education,
                 values_from = percent)
+  
+  # edu df ----
+  edu_acs_df <- df_percent_wider
+  
   
   # create df
   if (is.null(state)) {
@@ -136,8 +163,8 @@ function(geography = "zcta", state){
   df_lang <- 
     get_acs(geography = "zcta",
             year = 2018, # closest year to 2018 that doesn't pull all NA values
-            state = "California",
-            survey = "acs5",
+            # state = "California",
+            # survey = "acs5",
             summary_var = "B16001_001", # Estimate!!Total:
             variables = c(
               english_only = "B16001_002" # Estimate!!Total!!Speak only English
@@ -146,6 +173,7 @@ function(geography = "zcta", state){
     rename(language = variable) %>% 
     # create ZIP column with just 5 digit numbers
     mutate(zip_code = str_sub(name, start = -5, end = -1))
+  
   # calculate percentage
   df_percent <- 
     df_lang %>% 
@@ -155,6 +183,7 @@ function(geography = "zcta", state){
               summary_est = unique(summary_est),
               summary_moe = unique(summary_moe),
               percent = estimate / summary_est)
+  
   # create column for each percentage for each group (pivot wider)
   # necessary to be able to left_join() with RIDB data
   df_percent_wider <- 
@@ -179,9 +208,9 @@ function(geography = "zcta", state){
 function(geography = "zcta", year, state){
   df_median_income <- 
     get_acs(geography = "zcta",
-            year = 2018,
-            state = "California",
-            survey = "acs5",
+            # year = 2018,
+            # state = "California",
+            # survey = "acs5",
             variables = c(
               median_income = "B19013_001" # Estimate!!Median household income in the past 12 months (in 2019 inflation-adjusted dollars)
             )) %>% 
@@ -204,9 +233,9 @@ function(geography = "zcta", year, state){
 function(geography = "zcta", year, state){
   df_median_age <- 
     get_acs(geography = "zcta",
-            year = 2018,
-            state = "California",
-            survey = "acs5",
+            # year = 2018,
+            # state = "California",
+            # survey = "acs5",
             variables = c(
               median_income = "B01002_001" # Estimate!!Median age
             )) %>% 
@@ -230,9 +259,9 @@ function(geography = "zcta", year, state){
   # read in raw data
   df_computers <- 
     get_acs(geography = "zcta",
-            year = 2018,
-            state = "California",
-            survey = "acs5",
+            # year = 2018,
+            # state = "California",
+            # survey = "acs5",
             summary_var = "B28003_001", #Estimate!!Total: 
             variables = c(
               has_a_computer = "B28003_002", #Estimate!!Total!!Has one or more types of computing devices
@@ -242,6 +271,7 @@ function(geography = "zcta", year, state){
     rename(access_to_computer = variable) %>% 
     # create column of 5 digit ZIP code
     mutate(zip_code = str_sub(name, start = -5, end = -1))
+  
   # calculate percentage
   df_percent <- 
     df_computers %>% 

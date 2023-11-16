@@ -25,6 +25,7 @@ library(here)
 library(sf)
 library(vroom)
 library(dplyr)
+library(tidyr)
 library(leaflet)
 library(ggplot2)
 library(scales)
@@ -33,6 +34,10 @@ library(RColorBrewer)
 library(zipcodeR)
 library(shiny)
 library(ggiraph)
+library(janitor)
+library(tidycensus)
+library(stringr)
+library(plotly)
 # bslib::bs_themer()
 ```
 
@@ -42,6 +47,9 @@ r5_au_bounds <- read_sf(here("data/spatial/clean/"))
 
 # ridb
 usfs_ridb_all <- vroom(here("data/ridb/clean/usfs_ridb_all.csv"))
+
+# 2021 FY data
+usfs_ridb2021 <- usfs_ridb_all %>% filter(fy == 2021)
 ```
 
 
@@ -151,7 +159,292 @@ shinyApp(
 ### Chart D {.no-title}
 
 ```{r}
+# # read in raw data
+# df_race <-
+#   get_acs(
+#     geography = "zcta",
+#     # year = 2018,
+#     ## NOTEHD: As of the 2020 ACS,
+#     ## subsetting by state is no longer supported for ZCTAs on the API side
+#     # state = "California",
+#     # survey = "acs5",
+#     summary_var = "B03002_001",
+#     #Estimate!!Total:
+#     variables = c(
+#       white = "B03002_003",
+#       #Estimate!!Total!!Not Hispanic or Latino!!White alone
+#       black = "B03002_004",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!Black or African American alone
+#       native_american = "B03002_005",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!American Indian and Alaska Native alone
+#       asian = "B03002_006",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!Asian alone
+#       pacific_islander = "B03002_007",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone
+#       other = "B03002_008",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!Some other race alone
+#       multiracial = "B03002_009",
+#       # Estimate!!Total:!!Not Hispanic or Latino!!Two or more races
+#       hispanic_latinx = "B03002_012" # Estimate!!Total!!Hispanic or Latino
+#     )
+#   ) %>%
+#   clean_names() %>%
+#   rename(race = variable) %>%
+#   # create column of 5 digit ZIP code
+#   mutate(zip_code = str_sub(name, start = -5, end = -1))
+# 
+# # CA zip codes
+# zipCA <- zipcodeR::zip_code_db %>% filter(state == "CA")
+# 
+# zipCA <- as.vector(zipCA$zipcode)
+# 
+# # calculate percentage
+# df_percent <-
+#   df_race %>%
+#   # # just CA zips
+#   # filter(zip_code %in% zipCA) %>%
+#   group_by(zip_code, race) %>%
+#   summarise(
+#     estimate = sum(estimate),
+#     moe = sum(moe),
+#     summary_est = unique(summary_est),
+#     summary_moe = unique(summary_moe),
+#     percent = estimate / summary_est
+#   ) %>% 
+#   rename(race_percentage = percent)
+# 
+# race_park_subset <- usfs_ridb2021 %>% 
+#   select(park,
+#          customerzip) %>%
+#   left_join(df_percent, by = c("customerzip" = "zip_code"))
+# 
+# 
+# not_reactive_race_top_quartile_res_plot <- function(admin_unit,
+#                                                     site,
+#                                                     race_top_quartile_df) {
+#   # create reactive dataframe and further subset
+#   plot_data <- race_top_quartile_df %>%
+#     # filter to user site of choice
+#     filter(park == site) %>%
+#     # select to variables of interest
+#     select(park, customerzip,
+#            race, race_percentage) %>%
+#     drop_na(race_percentage) %>%
+#     # summarize to inner quartile range, median, and total reservations
+#     group_by(race) %>%
+#     summarize(count = n())
+#   
+#   # parameters
+#   race_group_colors <-
+#     c(
+#       "Other Race(s)" = "#999999",
+#       "Pacific Islander" = "#E69F00",
+#       "Multiracial" = "#56B4E9",
+#       "Asian" = "#009E73",
+#       "Black" = "#F0E442",
+#       "White" = "#0072B2",
+#       "Native American" = "#D55E00",
+#       "Hispanic Latinx" = "#CC79A7"
+#     )
+#   
+#   # create plot
+#   plotly <- ggplot(data = plot_data) +
+#     geom_col(aes(
+#       x = count,
+#       y = reorder(race, count),
+#       fill = race,
+#       text = paste0(
+#         scales::comma(count, accuracy = 1),
+#         " reservations were made<br>by people who live in<br>ZIP codes with high<br>",
+#         race,
+#         " populations."
+#       )
+#     )) +
+#     scale_x_continuous(labels = comma_format(accuracy = 1)) +
+#     scale_y_discrete(expand = c(0.1, 0)) +
+#     scale_fill_manual(values = race_group_colors) +
+#     scale_color_manual(values = race_group_colors) +
+#     labs(x = paste("Number of Reservations"),
+#          y = "") +
+#     theme_minimal() +
+#     theme(
+#       plot.background = element_rect("white"),
+#       panel.grid.major.y = element_blank(),
+#       legend.position = "none",
+#       axis.title.x = element_text(size = 8),
+#       axis.title.y = element_text(size = 8)
+#     )
+#   
+#   # create plotly
+#   ggplotly(
+#     plotly,
+#     tooltip = list("text"),
+#     height = 600,
+#     width = 450
+#   ) %>%
+#     config(
+#       modeBarButtonsToRemove = list(
+#         "zoom",
+#         "pan",
+#         "select",
+#         "zoomIn",
+#         "zoomOut",
+#         "lasso2d",
+#         "resetScale2d",
+#         "autoScale2d",
+#         "hoverClosestCartesian",
+#         "hoverCompareCartesian"
+#       )
+#     ) %>%
+#     layout(title = list(
+#       text = paste0(
+#         "Number of Reservations to this site coming from<br>ZIP codes with high proportions of:"
+#       ),
+#       font = list(size = 14.5)
+#     ))
+#   
+# } # EO function
+# 
+# not_reactive_race_top_quartile_res_plot(admin_unit = "Inyo National Forest",
+#                                         site = "Convict Lake Campground",
+#                                         race_park_subset)
+# 
+#   # create reactive dataframe and further subset
+#   plot_data <- race_park_subset %>%
+#     # filter to user site of choice
+#     filter(park == "Convict Lake Campground") %>%
+#     # select to variables of interest
+#     select(park, customerzip,
+#            race, race_percentage) %>%
+#     drop_na(race_percentage) %>%
+#     # summarize to inner quartile range, median, and total reservations
+#     group_by(race) %>%
+#     summarize(count = n())
+```
 
+
+```{r}
+# read in raw data
+df_race <-
+  get_acs(
+    geography = "zcta",
+    # year = 2018,
+    ## NOTEHD: As of the 2020 ACS,
+    ## subsetting by state is no longer supported for ZCTAs on the API side
+    # state = "California",
+    # survey = "acs5",
+    summary_var = "B03002_001",
+    #Estimate!!Total:
+    variables = c(
+      white = "B03002_003",
+      #Estimate!!Total!!Not Hispanic or Latino!!White alone
+      black = "B03002_004",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Black or African American alone
+      native_american = "B03002_005",
+      # Estimate!!Total:!!Not Hispanic or Latino!!American Indian and Alaska Native alone
+      asian = "B03002_006",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Asian alone
+      pacific_islander = "B03002_007",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone
+      other = "B03002_008",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Some other race alone
+      multiracial = "B03002_009",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Two or more races
+      hispanic_latinx = "B03002_012" # Estimate!!Total!!Hispanic or Latino
+    )
+  ) %>%
+  clean_names() %>%
+  rename(race = variable) %>%
+  # create column of 5 digit ZIP code
+  mutate(zip_code = str_sub(name, start = -5, end = -1))
+
+# CA zip codes
+zipCA <- zipcodeR::zip_code_db %>% filter(state == "CA")
+
+zipCA <- as.vector(zipCA$zipcode)
+
+# calculate percentage
+df_percent <-
+  df_race %>%
+  # just CA zips
+  filter(zip_code %in% zipCA) %>%
+  group_by(zip_code, race) %>%
+  summarise(
+    estimate = sum(estimate),
+    moe = sum(moe),
+    summary_est = unique(summary_est),
+    summary_moe = unique(summary_moe),
+    percent = estimate / summary_est
+  )
+
+# df_race <- df_percent
+
+# create column for each percentage for each group (pivot wider)
+# necessary to be able to left_join() with RIDB data
+df_percent_wider <-
+  df_percent %>%
+  select(zip_code, summary_est, race, percent) %>%
+  rename(zip_code_population = summary_est) %>%
+  pivot_wider(names_from = "race",
+              values_from = "percent")
+  
+
+usfs_ridb_race <- usfs_ridb2021 %>% 
+  left_join(df_percent_wider, by = c("customerzip" = "zip_code"))
+
+usfs_ridb_race_calc <- usfs_ridb_race %>% 
+  summarize(
+    white = mean(white, na.rm = TRUE),
+    black = mean(black, na.rm = TRUE),
+    asian = mean(asian, na.rm = TRUE),
+    multiracial = mean(multiracial, na.rm = TRUE),
+    other = mean(other, na.rm = TRUE),
+    native_american = mean(native_american, na.rm = TRUE),
+    pacific_islander = mean(pacific_islander, na.rm = TRUE),
+    hispanic_latinx = mean(hispanic_latinx, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = 1:8,
+               names_to = "race",
+               values_to = "race_percent_average") %>%
+  mutate(race = str_replace(
+    string = race,
+    pattern = "_",
+    replacement = " "
+  ),
+  race = str_to_title(race))
+
+x_max <- max(usfs_ridb_race_calc$race_percent_average) + 0.1
+
+groups_colors_ridb_ca <- c("RIDB" = "#64863C", "CA" = "#a3a3a3")
+text_colors_ridb_ca <- c("RIDB" = "#466C04", "CA" = "#848484")
+
+ggplot(data = usfs_ridb_race_calc) +
+  geom_col(aes(
+    x = race_percent_average,
+    y = reorder(race, race_percent_average)
+  ),
+  fill = "#64863C",
+  position = "dodge") +
+  scale_x_continuous(labels = percent, limits = c(0, x_max)) +
+  scale_y_discrete(expand = c(0.3, 0)) +
+  # scale_fill_manual(values = groups_colors_ridb_ca) +
+  geom_text(
+    aes(
+      x = race_percent_average,
+      y = reorder(race, desc(race)),
+      label = scales::percent(race_percent_average, accuracy = 0.1)
+    ),
+    hjust = -0.1,
+    size = 4,
+  ) +
+  scale_color_manual(values = text_colors_ridb_ca) +
+  labs(title = "Average Race Demographics for R5 (2021)",
+       x = "Percentage (%)",
+       y = "") +
+  theme_minimal() +
+  theme(plot.background = element_rect("white"),
+        panel.grid.major.y = element_blank(),
+        text = element_text(size = 12))
 ```
 
 # Rec-Sheds {data-orientation=rows}
@@ -162,9 +455,6 @@ shinyApp(
 test <- usfs_ridb_all %>% 
   # Inyo NF
   filter(park == "Convict Lake Campground")
-
-# 2021 FY data
-usfs_ridb2021 <- usfs_ridb_all %>% filter(fy == 2021)
 ```
 
 
@@ -501,7 +791,8 @@ leaflet() %>%
     weight = 1,
     fillColor = "purple",
     # ~colorBin("purple", percentage_reservations)(percentage_reservations)
-    color = "white"
+    color = "white",
+    popupOptions = popupOptions()
   ) %>% 
   addLegend(
     "topright",
@@ -518,7 +809,6 @@ leaflet() %>%
              popup = site_location_map$park,
              icon = camping_icon)
 ```
-
 
 
 ## Row 2
@@ -558,9 +848,6 @@ mean_numofppl <-  mean(convictlake_2021$numberofpeople, na.rm = TRUE)
 
 valueBox(round(mean_numofppl, 0), color = "info")
 ```
-
-
-
 
 
 <!-- example code -->

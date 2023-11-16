@@ -1,5 +1,6 @@
 # Data
 data/*
+dashboard/data*
 
 # History files
 .Rhistory
