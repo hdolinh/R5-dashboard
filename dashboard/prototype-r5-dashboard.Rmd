@@ -92,52 +92,63 @@ valueBox(4, color = "warning")
 valueBox(5, color = "danger")
 ```
 
-## Row 2 {data-width=350}
+## Row 2 {data-width=450}
 
 ### Chart C {.no-title}
 
 ```{r}
-shiny::radioButtons("year",
-                    label = NULL,
-                    choices = c(2018, 2019, 2020, 2021, "All"),
-                    selected = "All",
-                    inline =TRUE)
+shinyApp(
+  ui = fillPage(
+    fillCol(flex = c(NA, 1), 
+    inputPanel(
+      selectInput("forest",
+                  "USFS Forest:",
+                  choices = sort(unique(usfs_ridb_all$forestname)),
+                  selected = "Angeles National Forest"
+                  )
+    ),
+    
+    plotOutput("bwPlot", height = "100%")
+    ) # EO fillCol
+  ),
+  
+  server = function(input, output) {
+    
+    bw_rdf <- reactive({
+      usfs_ridb_all %>%
+        filter(bookingwindow > 0,
+               bookingwindow != "Inf") %>%
+        select(fy, forestname, park, bookingwindow) %>%
+        filter(!is.na(bookingwindow),
+               forestname == input$forest) %>%
+        group_by(fy, park) %>%
+        summarize(avg_bookingwindow = mean(bookingwindow))
+    })
+    
+    output$bwPlot <- renderPlot({
+      
+      bw_plot <- ggplot(data = bw_rdf(), aes(x = park,
+                                             y = avg_bookingwindow)) +
+        geom_boxplot(color = "#628e6e") +
+        geom_jitter(aes(color = fy),
+                    alpha = 0.3,
+                    size = 0.9) +
+        theme_minimal() +
+        theme(legend.position = "none") +
+        coord_flip() +
+        labs(x = NULL,
+             y = "Average booking window (days)")
+      
+      bw_plot
+    })
+      
+  }
+)
 
-bw_df <- usfs_ridb_all %>% 
-  filter(bookingwindow > 0,
-         bookingwindow != "Inf") %>%
-  select(fy, forestname, park, bookingwindow) %>%
-  filter(!is.na(bookingwindow),
-         forestname == "Angeles National Forest") %>% 
-  group_by(fy, park) %>% 
-  summarize(avg_bookingwindow = mean(bookingwindow))
 
-bw_plot <- ggplot(data = bw_df, aes(x = park,
-                                    y = avg_bookingwindow)) +
-  geom_boxplot(color = "#628e6e") +
-  geom_jitter(aes(color = fy),
-              alpha = 0.3,
-              size = 0.9) +
-  theme_minimal() +
-  theme(legend.position = "none") +
-  coord_flip()+
-  labs(
-    x = NULL,
-    y = "Average booking window (days)"
-  )
-
-bw_plot
-
-# girafe(ggobj = bw_plot,
-#        options = list(
-#          opts_hover(css = "fill:black; stroke: yellow;"),
-#          opts_hover_inv(css = "opacity:0.2;"),
-#          opts_zoom(max = 10)
-#          )
-#        )
 ```
 
-### Chart D
+### Chart D {.no-title}
 
 ```{r}
 
@@ -166,22 +177,12 @@ selectInput("year", label = "Select a year:",
             choices = c(2018, 2019, 2020, 2021), selected = 2021)
 
 selectInput("forest", label = "Select a forest:",
-            choices = c(
-              "Angeles National Forest",
-              "Sierra National Forest",
-              "Inyo National Forest",
-              "Los Padres National Forest"
-            ), 
+            choices = sort(unique(usfs_ridb_all$forestname)), 
             selected = "Inyo National Forest")
 
 selectInput("park", label = "Select a site:",
-            choices = c(
-              "Reyes Creek Campground",
-              "Mt. Pinos Campground",
-              "Convict Lake Campground",
-              "Silvertip Campground"
-            ), 
-            selected = 2021)
+            choices = sort(unique(usfs_ridb_all$park)), 
+            selected = "Convict Lake Campground")
 ```
 
 
@@ -202,6 +203,18 @@ map_data <- test %>%
                                       accuracy = 0.01)
   ) %>%
   filter(!is.na(customerzip))
+
+# map_data <- test %>%
+#   filter(!is.na(customerzip)) %>% 
+#   group_by(fy, state_full) %>%
+#   summarize(
+#     number_reservations = n(),
+#     # percentage_reservations = round((number_reservations / total_reservations) * 100,
+#     #                                 1)
+#     percentage_reservations = percent((number_reservations / total_reservations),
+#                                       accuracy = 0.01)
+#   )
+  
 ```
 
 
@@ -405,6 +418,10 @@ df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
   rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)  
 
 ## combine dfs ##
+
+# filtered map_data
+# subset_map_data <- map_data %>% filter(fy == 2021)
+
 map_data_geometries <-
   df_state_geometries_us %>%
   left_join(map_data,
@@ -433,8 +450,6 @@ site_location_map <- usfs_ridb2021 %>%
   ) %>%
   filter(park == "Convict Lake Campground")
 ```
-
-
 
 
 ```{r}
@@ -485,8 +500,16 @@ leaflet() %>%
     data = map_data_geometries,
     weight = 1,
     fillColor = "purple",
+    # ~colorBin("purple", percentage_reservations)(percentage_reservations)
     color = "white"
   ) %>% 
+  addLegend(
+    "topright",
+    title = "Number of Visits",
+    pal = colorBin("purple", map_data_geometries$number_reservations),
+    values = map_data_geometries$number_reservations,
+    opacity = 1
+  ) %>%
   addProviderTiles(
     providers$CartoDB.Voyager
     ) %>% 
@@ -526,7 +549,7 @@ valueBox(paste0("$", median_cost),
 ```
 
 
-### Number of people in reservation for selected site in 2021
+### Average number of people per reservation for selected site in 2021
 
 ```{r}
 convictlake_2021 <- test %>% filter(fy == 2021)
