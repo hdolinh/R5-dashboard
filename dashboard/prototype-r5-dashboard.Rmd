@@ -31,6 +31,8 @@ library(scales)
 library(tigris)
 library(RColorBrewer)
 library(zipcodeR)
+library(shiny)
+library(ggiraph)
 # bslib::bs_themer()
 ```
 
@@ -43,14 +45,27 @@ usfs_ridb_all <- vroom(here("data/ridb/clean/usfs_ridb_all.csv"))
 ```
 
 
-# Page One {data-orientation=rows}
+# Welcome {data-orientation=rows}
 
 ## Row
 
-### Primary Value Box
+### Average increase in visits per year (2018-2021)
 
-```{r}
-valueBox(1, color = "primary")
+```{r tot res primary}
+# average % change for reservations 2018-2021
+nrow2021 <- nrow(filter(usfs_ridb_all, fy == 2021))
+nrow2020 <- nrow(filter(usfs_ridb_all, fy == 2020))
+nrow2019 <- nrow(filter(usfs_ridb_all, fy == 2019))
+nrow2018 <- nrow(filter(usfs_ridb_all, fy == 2018))
+
+delta_fy18 <- ((nrow2019 - nrow2018) / nrow2018) * 100
+delta_fy19 <- ((nrow2020 - nrow2019) / nrow2019) * 100
+delta_fy20 <- ((nrow2021 - nrow2020) / nrow2020) * 100
+
+avg_delta <- (delta_fy18 + delta_fy19 + delta_fy20) / 3
+
+valueBox(prettyNum(paste0(round(avg_delta, 0), "%"), 
+                   decimal.mark = getOption("OutDec"), color = "primary"))
 ```
 
 ### Success Value Box
@@ -79,10 +94,47 @@ valueBox(5, color = "danger")
 
 ## Row 2 {data-width=350}
 
-### Chart C
+### Chart C {.no-title}
 
 ```{r}
+shiny::radioButtons("year",
+                    label = NULL,
+                    choices = c(2018, 2019, 2020, 2021, "All"),
+                    selected = "All",
+                    inline =TRUE)
 
+bw_df <- usfs_ridb_all %>% 
+  filter(bookingwindow > 0,
+         bookingwindow != "Inf") %>%
+  select(fy, forestname, park, bookingwindow) %>%
+  filter(!is.na(bookingwindow),
+         forestname == "Angeles National Forest") %>% 
+  group_by(fy, park) %>% 
+  summarize(avg_bookingwindow = mean(bookingwindow))
+
+bw_plot <- ggplot(data = bw_df, aes(x = park,
+                                    y = avg_bookingwindow)) +
+  geom_boxplot(color = "#628e6e") +
+  geom_jitter(aes(color = fy),
+              alpha = 0.3,
+              size = 0.9) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  coord_flip()+
+  labs(
+    x = NULL,
+    y = "Average booking window (days)"
+  )
+
+bw_plot
+
+# girafe(ggobj = bw_plot,
+#        options = list(
+#          opts_hover(css = "fill:black; stroke: yellow;"),
+#          opts_hover_inv(css = "opacity:0.2;"),
+#          opts_zoom(max = 10)
+#          )
+#        )
 ```
 
 ### Chart D
@@ -465,7 +517,7 @@ cost_df <- test %>%
   filter(dailycost > 0)
 
 # NOTEHD: right skewed so using median
-ggplot(data = cost_df, aes(x = dailycost)) + geom_histogram()
+# ggplot(data = cost_df, aes(x = dailycost)) + geom_histogram()
 
 median_cost <- median(cost_df$dailycost)
 
@@ -474,14 +526,15 @@ valueBox(paste0("$", median_cost),
 ```
 
 
-### Number of people in reservation for selected site
+### Number of people in reservation for selected site in 2021
 
 ```{r}
+convictlake_2021 <- test %>% filter(fy == 2021)
 
+mean_numofppl <-  mean(convictlake_2021$numberofpeople, na.rm = TRUE)
+
+valueBox(round(mean_numofppl, 0), color = "info")
 ```
-
-
-
 
 
 
@@ -489,7 +542,7 @@ valueBox(paste0("$", median_cost),
 
 <!-- example code -->
 
-```{r}
+```{r eval=FALSE}
 # Total number of visits to R5 sites in 2021
 r5_2021_visits <- usfs_ridb_all %>% filter(fy == 2021)
 
@@ -498,7 +551,7 @@ valueBox(prettyNum(nrow(r5_2021_visits), big.mark = ","),
 ```
 
 
-```{r}
+```{r eval=FALSE}
 # Most visited forest in 2021
 most_visited_forest <- usfs_ridb_all %>% 
   filter(fy == 2021) %>% 
@@ -512,7 +565,7 @@ valueBox(paste0(prettyNum(most_visited_forest$n, big.mark = ","),
 ```
 
 
-```{r}
+```{r eval=FALSE}
 # Median cost in 2021
 
 # rm inf and neg values
