@@ -243,7 +243,9 @@ park_location <- all_ridb %>%
            facilityzip,
            facilitylongitude,
            facilitylatitude) %>%
-  summarize(count = n())
+  summarize(count = n()) %>% 
+  mutate(facilitylongitude = as.character(facilitylongitude),
+         facilitylatitude = as.character(facilitylatitude))
 
 
 park_location_na <- all_ridb %>%
@@ -253,7 +255,11 @@ park_location_na <- all_ridb %>%
            facilityzip,
            facilitylongitude,
            facilitylatitude) %>%
-  summarize(count = n())
+  summarize(count = n()) %>% 
+  mutate(
+    facilitylongitude = as.character(facilitylongitude),
+    facilitylatitude = as.character(facilitylatitude)
+    )
   
 
 clean_facility_location <- function(facility_location_df, park_df){
@@ -262,81 +268,249 @@ clean_facility_location <- function(facility_location_df, park_df){
     ## clean facility zips & facility lat/lon ##
     dplyr::mutate(
       
+      # convert to chr to see full coordinate
+      facilitylongitude = as.character(facilitylongitude),
+      facilitylatitude = as.character(facilitylatitude),
+      # chose zip with highest count
       facilityzip = case_when(
+        # Cleveland NF
+        forestname == "Cleveland National Forest" & park == "El Prado Group" ~ "91948",
+        forestname == "Cleveland National Forest" & park == "Falcon Group" ~ "92679",
+        forestname == "Cleveland National Forest" & park == "Fry Creek Campground" ~ "92060",
+        forestname == "Cleveland National Forest" & park == "Horse Heaven Group" ~ "92060",
+        forestname == "Cleveland National Forest" & park == "Laguna" ~ "91948",
         # Eldorado NF
         forestname == "Eldorado National Forest" & park == "Black Oak" ~ "95735",
+        forestname == "Eldorado National Forest" & park == "Gerle Creek" ~ "95726",
+        forestname == "Eldorado National Forest" & park == "Ice House" ~ "95735",
         # Inyo NF
-        forestname == "Inyo National Forest" & park == "Aspen Group" ~ "93514",
+        forestname == "Inyo National Forest" & park == "Aspen Group" ~ "93546",
         forestname == "Inyo National Forest" & park == "Big Pine Canyon" ~ "93513",
         forestname == "Inyo National Forest" & park == "Big Pine Creek Campground" ~ "93513",
         forestname == "Inyo National Forest" & park == "Bishop Park Group" ~ "93514",
+        forestname == "Inyo National Forest" & park == "Coldwater Campground" ~ "93546",
+        forestname == "Inyo National Forest" & park == "East Fork Campground – Inyo National Forest" ~ "93514",
+        forestname == "Inyo National Forest" & park == "French Camp" ~ "93514",
+        forestname == "Inyo National Forest" & park == "Grays Meadows" ~ "93526",
+        forestname == "Inyo National Forest" & park == "June Lake" ~ "93529",
+        # Lake Tahoe Basin Mgmt Unit
+        forestname == "Lake Tahoe Basin Management Unit" & park == "Desolation Wilderness Permit" ~ "95735",
         # Lassen NF
         forestname == "Lassen National Forest" & park == "Almanor" ~ "96020",
+        forestname == "Lassen National Forest" & park == "Gurnsey Creek" ~ "96061",
+        forestname == "Lassen National Forest" & park == "Hat Creek" ~ "96071",
+        # Plumas NF
+        forestname == "Plumas National Forest" & park == "Hallsted" ~ "95984",
+        forestname == "Plumas National Forest" & park == "Hutchins" ~ "95971",
         # San Bernardino NF
         forestname == "San Bernardino National Forest" & park == "Barton Flats" ~ "92305",
-        forestname == "San Bernardino National Forest" & park == "Big Pine Equestrian Group Campground" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Big Pine Equestrian Group Campground" ~ "92356",
         forestname == "San Bernardino National Forest" & park == "Bluff Mesa Group Camp" ~ "92305",
         forestname == "San Bernardino National Forest" & park == "Boulder Group Camp" ~ "92305",
-        forestname == "San Bernardino National Forest" & park == "Buttercup Group Camp" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Buttercup Group Camp" ~ "92315",
+        forestname == "San Bernardino National Forest" & park == "Crab Flats" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Deer Group Camp" ~ "92305",
+        forestname == "San Bernardino National Forest" & park == "Dogwood" ~ "92352",
+        forestname == "San Bernardino National Forest" & park == "Grays Peak Group Camp" ~ "92333",
+        forestname == "San Bernardino National Forest" & park == "Green Spot Equestrian Group Camp" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Hanna Flat" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Heart Bar Campground" ~ "92305",
+        forestname == "San Bernardino National Forest" & park == "Heart Bar Equestrian" ~ "92315",
+        forestname == "San Bernardino National Forest" & park == "Ironwood Group Camp" ~ "92314",
+        forestname == "San Bernardino National Forest" & park == "Juniper Springs Group Camp" ~ "92314",
         # Sequoia NF
         forestname == "Sequoia National Forest" & park == "Belknap" ~ "93208",
+        forestname == "Sequoia National Forest" & park == "Cove Group" ~ "93262",
+        forestname == "Sequoia National Forest" & park == "Coy Flat" ~ "93208",
+        forestname == "Sequoia National Forest" & park == "Fir Group" ~ "93262",
+        forestname == "Sequoia National Forest" & park == "Holey Meadow" ~ "93257",
+        forestname == "Sequoia National Forest" & park == "Hospital Flat" ~ "93238",
         # Sierra NF
         forestname == "Sierra National Forest" & park == "Badger Flats Group" ~ "93634",
+        forestname == "Sierra National Forest" & park == "Catavee" ~ "93634",
+        forestname == "Sierra National Forest" & park == "Cedar Bluff" ~ "93669",
+        forestname == "Sierra National Forest" & park == "Chilkoot" ~ "93604",
+        forestname == "Sierra National Forest" & park == "College" ~ "93634",
+        forestname == "Sierra National Forest" & park == "Deer Creek" ~ "93634",
+        forestname == "Sierra National Forest" & park == "Dinkey Creek" ~ "93664",
+        forestname == "Sierra National Forest" & park == "Dirt Flat" ~ "95318",
+        forestname == "Sierra National Forest" & park == "Dorabelle Campground" ~ "93664",
+        forestname == "Sierra National Forest" & park == "Dry Gulch" ~ "95318",
+        forestname == "Sierra National Forest" & park == "Jackass Meadow" ~ "93634",
+        forestname == "Sierra National Forest" & park == "Kelty Meadow" ~ "93644",
+        forestname == "Sierra National Forest" & park == "Kinnikinnick" ~ "93634",
+        # Six Rivers NF
+        forestname == "Six Rivers National Forest" & park == "Dillon Creek Campground" ~ "96039",
+        forestname == "Six Rivers National Forest" & park == "Fish Lake Campground" ~ "95556",
         # Stanislaus NF
         forestname == "Stanislaus National Forest" & park == "Big Meadow" ~ "95223",
+        # Tahoe NF
+        forestname == "Tahoe National Forest" & park == "East Meadow Campground" ~ "96126",
+        forestname == "Tahoe National Forest" & park == "Findley Campground" ~ "96161",
+        forestname == "Tahoe National Forest" & park == "Fir Top Campground" ~ "96161",
         TRUE ~ facilityzip
       ),
       
       facilitylongitude = case_when(
+        # Cleveland NF
+        park == "El Prado Group" & facilityzip == "91948" ~ -116.4555556,
+        park == "Falcon Group" & facilityzip == "92679" ~ -117.4602778,
+        park == "Fry Creek Campground" & facilityzip == "92060" ~ -116.88,
+        park == "Horse Heaven Group" & facilityzip == "91948" ~ -116.4408333,
+        park == "Laguna" & facilityzip == "91948" ~ -116.4463889,
         # Eldorado NF
         park == "Black Oak" & facilityzip == "95735" ~ -120.5875,
+        park == "Gerle Creek" & facilityzip == "95726" ~ -120.3916667,
+        park == "Ice House" & facilityzip == "95735" ~ -120.3588889,
         # Inyo NF
-        park == "Aspen Group" & facilityzip == "93514" ~ -118.7119,
-        park == "Big Pine Canyon" & facilityzip == "93513" ~ -118.4222,
+        park == "Aspen Group" & facilityzip == "93514" ~ -118.711944444444,
+        park == "Big Pine Canyon" & facilityzip == "93513" ~ -118.4222222,
         park == "Big Pine Creek Campground" & facilityzip == "93513" ~ -118.4325,
-        park == "Bishop Park Group" & facilityzip == "93514" ~ -118.5933,
+        park == "Bishop Park Group" & facilityzip == "93514" ~ -118.5933333,
+        park == "Coldwater Campground" & facilityzip == "93546" ~ -118.9969444,
+        park == "East Fork Campground – Inyo National Forest" & facilityzip == "93514" ~ -118.7175,
+        park == "French Camp" & facilityzip == "93514" ~ -118.6791667,
+        park == "Grays Meadows" & facilityzip == "93526" ~ -118.295,
+        park == "June Lake" & facilityzip == "93529" ~ -119.0738889,
+        # Lake Tahoe Basin Mgmt Unit
+        park == "Lake Tahoe Basin Management Unit" & facilityzip == "95735" ~ -120.17,
         # Lassen NF
-        park == "Almanor" & facilityzip == "96020" ~ -121.1678,
+        park == "Almanor" & facilityzip == "96020" ~ -121.167777777778,
+        park == "Gurnsey Creek" & facilityzip == "96061" ~ -121.4266667,
+        park == "Hat Creek" & facilityzip == "96071" ~ -121.4455556,
+        # Plumas NF
+        park == "Hallsted" & facilityzip == "95984" ~ -121.0730556,
+        park == "Hutchins" & facilityzip == "95971" ~ -121.1991667,
         # San Bernardino NF
-        park == "Barton Flats" & facilityzip == "92305" ~ -116.8744,
-        park == "Big Pine Equestrian Group Campground" & facilityzip == "92314" ~ -117.0131,
-        park == "Bluff Mesa Group Camp" & facilityzip == "92305" ~ -116.9752,
-        park == "Boulder Group Camp" & facilityzip == "92305" ~ -116.9441,
-        park == "Buttercup Group Camp" & facilityzip == "92314" ~ -116.8803,
+        park == "Barton Flats" & facilityzip == "92305" ~ -116.8744444,
+        park == "Big Pine Equestrian Group Campground" & facilityzip == "92356" ~ -117.00852475500508,
+        park == "Bluff Mesa Group Camp" & facilityzip == "92305" ~ -116.9607795759009,
+        park == "Boulder Group Camp" & facilityzip == "92305" ~ -116.94388005467727,
+        park == "Buttercup Group Camp" & facilityzip == "92315" ~ -116.8802778,
+        park == "Crab Flats" & facilityzip == "92314" ~ -117.0833333,
+        park == "Deer Group Camp" & facilityzip == "92305" ~ -116.91664548351255,
+        park == "Dogwood" & facilityzip == "92352" ~ -117.2091667,
+        park == "Grays Peak Group Camp" & facilityzip == "92333" ~ -116.9705556,
+        park == "Green Spot Equestrian Group Camp" & facilityzip == "92314" ~ -116.8061111,
+        park == "Hanna Flat" & facilityzip == "92314" ~ -116.9744444,
+        park == "Heart Bar Campground" & facilityzip == "92305" ~ -116.7858333,
+        park == "Heart Bar Equestrian" & facilityzip == "92315" ~ -116.78123468792933,
+        park == "Ironwood Group Camp" & facilityzip == "92314" ~ -117.0119444,
+        park == "Juniper Springs Group Camp" & facilityzip == "92314" ~ -116.7163889,
         # Sequoia NF
-        park == "Belknap" & facilityzip == "93208" ~ -118.5997,
+        park == "Belknap" & facilityzip == "93208" ~ -118.5997222,
+        park == "Cove Group" & facilityzip == "93262" ~ -118.8380556,
+        park == "Coy Flat" & facilityzip == "93208" ~ -118.6180556,
+        park == "Fir Group" & facilityzip == "93262" ~ -118.8416667,
+        park == "Holey Meadow" & facilityzip == "93257" ~ -118.6180556,
+        park == "Hospital Flat" & facilityzip == "93238" ~ -118.4577778,
         # Sierra NF
         park == "Badger Flats Group" & facilityzip == "93634" ~ -119.115,
+        park == "Catavee" & facilityzip == "93634" ~ -119.1769444,
+        park == "Cedar Bluff" & facilityzip == "93669" ~ -119.5441667,
+        park == "Chilkoot" & facilityzip == "93604" ~ -119.5386111,
+        park == "College" & facilityzip == "93634" ~ -119.1688889,
+        park == "Deer Creek" & facilityzip == "93634" ~ -119.1769444,
+        park == "Dinkey Creek" & facilityzip == "93664" ~ -119.1538889,
+        park == "Dirt Flat" & facilityzip == "95318" ~ -119.8444444,
+        park == "Dorabelle Campground" & facilityzip == "93664" ~ -119.3097222,
+        park == "Dry Gulch" & facilityzip == "95318" ~ -119.8444444,
+        park == "Jackass Meadow" & facilityzip == "93634" ~ -118.9636111,
+        park == "Kelty Meadow" & facilityzip == "93644" ~ -119.5438889,
+        park == "Kinnikinnick" & facilityzip == "93634" ~ -119.1777778,
+        # Six Rivers NF
+        park == "Dillon Creek Campground" & facilityzip == "96039" ~ -123.5430556,
+        park == "Fish Lake Campground" & facilityzip == "95556" ~ -123.6844444,
         # Stanislaus NF
         park == "Big Meadow" & facilityzip == "95223" ~ -120.105,
+        # Tahoe NF
+        park == "East Meadow Campground" & facilityzip == "96126" ~ -120.5325,
+        park == "Findley Campground" & facilityzip == "96161" ~ -120.5530556,
+        park == "Fir Top Campground" & facilityzip == "96161" ~ -120.5502778,
         TRUE ~ facilitylongitude
       ),
       facilitylatitude = case_when(
+        # Cleveland NF
+        park == "El Prado Group" & facilityzip == "91948" ~ 32.8869444,
+        park == "Falcon Group" & facilityzip == "92679" ~ 33.6558333,
+        park == "Fry Creek Campground" & facilityzip == "92060" ~ 33.345,
+        park == "Horse Heaven Group" & facilityzip == "91948" ~ 32.8875,
+        park == "Laguna" & facilityzip == "91948" ~ 32.8872222,
         # Eldorado NF
-        park == "Black Oak" & facilityzip == "95735" ~ 38.90417,
+        park == "Black Oak" & facilityzip == "95735" ~ 38.9041667,
+        park == "Gerle Creek" & facilityzip == "95726" ~ 38.975,
+        park == "Ice House" & facilityzip == "95735" ~ 38.8233333,
         # Inyo NF
-        park == "Aspen Group" & facilityzip == "93514" ~ 37.52361,
-        park == "Big Pine Canyon" & facilityzip == "93513" ~ 37.12833,
-        park == "Big Pine Creek Campground" & facilityzip == "93513" ~ 37.12583,
-        park == "Bishop Park Group" & facilityzip == "93514" ~ 37.24389,
+        park == "Aspen Group" & facilityzip == "93514" ~ 37.5236111111111,
+        park == "Big Pine Canyon" & facilityzip == "93513" ~ 37.1283333,
+        park == "Big Pine Creek Campground" & facilityzip == "93513" ~ 37.1258333,
+        park == "Bishop Park Group" & facilityzip == "93514" ~ 37.2438889,
+        park == "Coldwater Campground" & facilityzip == "93546" ~ 37.5991667,
+        park == "East Fork Campground – Inyo National Forest" & facilityzip == "93514" ~ 37.4836111,
+        park == "French Camp" & facilityzip == "93514" ~ 37.5525,
+        park == "Grays Meadows" & facilityzip == "93526" ~ 36.7688889,
+        park == "June Lake" & facilityzip == "93529" ~ 37.7819444,
+        # Lake Tahoe Basin Mgmt Unit
+        park == "Lake Tahoe Basin Management Unit" & facilityzip == "95735" ~ 38.9197222,
         # Lassen NF
-        park == "Almanor" & facilityzip == "96020" ~ 40.21694,
+        park == "Almanor" & facilityzip == "96020" ~ 40.2169444444444,
+        park == "Gurnsey Creek" & facilityzip == "96061" ~ 40.3088889,
+        park == "Hat Creek" & facilityzip == "96071" ~ 40.6677778,
+        # Plumas NF
+        park == "Hallsted" & facilityzip == "95984" ~ 40.0175,
+        park == "Hutchins" & facilityzip == "95971" ~ 39.8830556,
         # San Bernardino NF
-        park == "Barton Flats" & facilityzip == "92305" ~ 34.17222,
-        park == "Big Pine Equestrian Group Campground" & facilityzip == "92314" ~ 34.31962,
-        park == "Bluff Mesa Group Camp" & facilityzip == "92305" ~ 34.22310,
-        park == "Boulder Group Camp" & facilityzip == "92305" ~ 34.22362,
-        park == "Buttercup Group Camp" & facilityzip == "92314" ~ 34.23543,
+        park == "Barton Flats" & facilityzip == "92305" ~ 34.1722222,
+        park == "Big Pine Equestrian Group Campground" & facilityzip == "92356" ~ 34.316014961609305,
+        park == "Bluff Mesa Group Camp" & facilityzip == "92305" ~ 34.22712525014481,
+        park == "Boulder Group Camp" & facilityzip == "92305" ~ 34.22355039789103,
+        park == "Buttercup Group Camp" & facilityzip == "92315" ~ 34.2352778,
+        park == "Crab Flats" & facilityzip == "92314" ~ 34.2616667,
+        park == "Deer Group Camp" & facilityzip == "92305" ~ 34.22210844156979,
+        park == "Dogwood" & facilityzip == "92352" ~ 34.2352778,
+        park == "Grays Peak Group Camp" & facilityzip == "92333" ~ 34.2733333,
+        park == "Green Spot Equestrian Group Camp" & facilityzip == "92314" ~ 34.2233333,
+        park == "Hanna Flat" & facilityzip == "92314" ~ 34.2877778,
+        park == "Heart Bar Campground" & facilityzip == "92305" ~ 34.1586111,
+        park == "Heart Bar Equestrian" & facilityzip == "92315" ~ 34.15572292102622,
+        park == "Ironwood Group Camp" & facilityzip == "92314" ~ 34.3038889,
+        park == "Juniper Springs Group Camp" & facilityzip == "92314" ~ 34.2197222,
         # Sequoia NF
-        park == "Belknap" & facilityzip == "93208" ~ 36.14167,
+        park == "Belknap" & facilityzip == "93208" ~ 36.1416667,
+        park == "Cove Group" & facilityzip == "93262" ~ 36.665,
+        park == "Coy Flat" & facilityzip == "93208" ~ 36.1291667,
+        park == "Fir Group" & facilityzip == "93262" ~ 36.6641667,
+        park == "Holey Meadow" & facilityzip == "93257" ~ 35.9541667,
+        park == "Hospital Flat" & facilityzip == "93238" ~ 35.8286111,
         # Sierra NF
-        park == "Badger Flats Group" & facilityzip == "93634" ~ 37.26944,
+        park == "Badger Flats Group" & facilityzip == "93634" ~ 37.2694444444445,
+        park == "Catavee" & facilityzip == ~ "93634" ~ 37.2525,
+        park == "Cedar Bluff" & facilityzip == "93669" ~ 37.3077778,
+        park == "Chilkoot" & facilityzip == "93604" ~ 37.3627778,
+        park == "College" & facilityzip == "93634" ~ 37.2519444,
+        park == "Deer Creek" & facilityzip == "93634" ~ 37.2519444,
+        park == "Dinkey Creek" & facilityzip == "93664" ~ 37.0730556,
+        park == "Dirt Flat" & facilityzip == "95318" ~ 37.6633333,
+        park == "Dorabelle Campground" & facilityzip == "93664" ~ 37.1138889,
+        park == "Dry Gulch" & facilityzip == "95318" ~ 37.6633333,
+        park == "Jackass Meadow" & facilityzip == "93634" ~ 37.2797222,
+        park == "Kelty Meadow" & facilityzip == "93644" ~ 37.4402778,
+        park == "Kinnikinnick" & facilityzip == "93634" ~ 37.2527778,
+        # Six Rivers NF
+        park == "Dillon Creek Campground" & facilityzip == "96039" ~ 41.5733333,
+        park == "Fish Lake Campground" & facilityzip == "95556" ~ 41.2641667,
         # Stanislaus NF
-        park == "Big Meadow" & facilityzip == "95223" ~ 38.41639,
+        park == "Big Meadow" & facilityzip == "95223" ~ 38.4163889,
+        # Tahoe NF
+        park == "East Meadow Campground" & facilityzip == "96126" ~ 39.5008333,
+        park == "Findley Campground" & facilityzip == "96161" ~ 39.4847222,
+        park == "Fir Top Campground" & facilityzip == "96161" ~ 39.4855556,
         TRUE ~ facilitylatitude
-      )
+      ),
+      # convert back to numeric
+      facilitylongitude = as.numeric(facilitylongitude),
+      facilitylatitude = as.numeric(facilitylatitude),
     )
-  
 }
 
 # 7. clean_sitetype() ----
@@ -1221,6 +1395,10 @@ park_test <- all_ridb %>%
   # filter(facilityzip == "93634") %>% 
   group_by(facilityzip, facilitylongitude, facilitylatitude) %>%
   summarize(count = n())
+
+
+test <- raw_ridb2021 %>% 
+  filter(stringr::str_detect(parentlocation, "Tahoe"))
 
 
 
