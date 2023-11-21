@@ -14,7 +14,10 @@ tar_option_set(
                "vroom",
                "sf",
                "janitor",
-               "dplyr")
+               "lubridate",
+               "dplyr",
+               "tidyr",
+               "stringr")
 )
 
 # Run the R scripts in the scripts/ folder with your custom functions:
@@ -46,5 +49,54 @@ list(
     name = save_spatial,
     command = r5_bounds_csv(clean_df = filter_r5, 
                             fp = "data/spatial/clean/r5_boundaries.shp")
+  ),
+  
+  ## --- RIDB data --- ##
+  tar_target(
+    name = file_ridb,
+    command = get_ridb_data(fp = "data/ridb/raw/",
+                            file = "reservations2018.csv",
+                            df_name = ridb,
+                            raw_df = raw_ridb)
+  ),
+  tar_target(
+    name = get_r5_ridb,
+    command = subset_ridb(subset_df = subset_df, 
+                          raw_df = file_ridb)
+  ),
+  tar_target(
+    name = process_customer_zips,
+    command = clean_customer_zips(customer_zips_df = customer_zips_df,
+                                  subset_df = get_r5_ridb)
+  ),
+  tar_target(
+    name = process_forestname,
+    command = clean_forestname(forestname_df = forestname_df,
+                               customer_zips_df = process_customer_zips)
+  ),
+  tar_target(
+    name = process_park,
+    command = clean_park(park_df = park_df,
+                         forestname_df = process_forestname,
+                         # `forestname_vec` from spatial bounds processing
+                         forestname_vec = get_forestnames)
+  ),
+  tar_target(
+    name = process_facility_location,
+    command = clean_facility_location(facility_location_df = facility_location_df,
+                                      park_df = process_park)
+  ),
+  tar_target(
+    name = process_sitetype,
+    command = clean_sitetype(sitetype_df = sitetype_df,
+                             facility_location_df = process_facility_location)
+  ),
+  tar_target(
+    # length of stay, booking window, daily cost, daily cost per visitor
+    name = create_vars,
+    command = calc_vars(calc_vars_df = calc_vars_df,
+                        sitetype_df = process_sitetype)
   )
+  
+  
 )
