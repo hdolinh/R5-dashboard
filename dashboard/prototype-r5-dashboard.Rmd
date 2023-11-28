@@ -1,7 +1,8 @@
 ---
-title: "R5 Dashboard"
+title: "R5 Rec-Shed Dashboard"
 output: 
   flexdashboard::flex_dashboard:
+    vertical-layout: fill
     theme:
       primary: "#217a38"
       secondary: "#24583b"
@@ -43,851 +44,102 @@ library(plotly)
 
 ```{r read in data}
 # spatial 
-r5_au_bounds <- read_sf(here("data/spatial/clean/"))
+r5_au_bounds <- sf::read_sf(here::here("data/spatial/clean/"))
 
 # ridb
-usfs_ridb_all <- vroom(here("data/ridb/clean/usfs_ridb_all.csv"))
+usfs_ridb2021 <- vroom::vroom(here::here("data/ridb/clean/usfs_ridb2021_no_dist_travel.csv"))
 
-# 2021 FY data
-usfs_ridb2021 <- usfs_ridb_all %>% filter(fy == 2021)
+# Inyo National Forest subset
+inyo_usfs_ridb2021 <- usfs_ridb2021 %>% 
+  dplyr::filter(forestname == "Inyo National Forest")
 ```
-
-
-# Welcome {data-orientation=rows}
-
-## Row
-
-### Average increase in visits per year (2018-2021)
-
-```{r tot res primary}
-# average % change for reservations 2018-2021
-nrow2021 <- nrow(filter(usfs_ridb_all, fy == 2021))
-nrow2020 <- nrow(filter(usfs_ridb_all, fy == 2020))
-nrow2019 <- nrow(filter(usfs_ridb_all, fy == 2019))
-nrow2018 <- nrow(filter(usfs_ridb_all, fy == 2018))
-
-delta_fy18 <- ((nrow2019 - nrow2018) / nrow2018) * 100
-delta_fy19 <- ((nrow2020 - nrow2019) / nrow2019) * 100
-delta_fy20 <- ((nrow2021 - nrow2020) / nrow2020) * 100
-
-avg_delta <- (delta_fy18 + delta_fy19 + delta_fy20) / 3
-
-valueBox(prettyNum(paste0(round(avg_delta, 0), "%"), 
-                   decimal.mark = getOption("OutDec"), color = "primary"))
-```
-
-### Success Value Box
-
-```{r}
-valueBox(2, color = "success")
-```
-
-### Info Value Box
-
-```{r}
-valueBox(3, color = "info")
-```
-
-### Warning Value Box
-
-```{r}
-valueBox(4, color = "warning")
-```
-
-### Danger Value Box
-
-```{r}
-valueBox(5, color = "danger")
-```
-
-## Row 2 {data-width=450}
-
-### Chart C {.no-title}
-
-```{r}
-shinyApp(
-  ui = fillPage(
-    fillCol(flex = c(NA, 1), 
-    inputPanel(
-      selectInput("forest",
-                  "USFS Forest:",
-                  choices = sort(unique(usfs_ridb_all$forestname)),
-                  selected = "Angeles National Forest"
-                  )
-    ),
-    
-    plotOutput("bwPlot", height = "100%")
-    ) # EO fillCol
-  ),
-  
-  server = function(input, output) {
-    
-    bw_rdf <- reactive({
-      usfs_ridb_all %>%
-        filter(bookingwindow > 0,
-               bookingwindow != "Inf") %>%
-        select(fy, forestname, park, bookingwindow) %>%
-        filter(!is.na(bookingwindow),
-               forestname == input$forest) %>%
-        group_by(fy, park) %>%
-        summarize(avg_bookingwindow = mean(bookingwindow))
-    })
-    
-    output$bwPlot <- renderPlot({
-      
-      bw_plot <- ggplot(data = bw_rdf(), aes(x = park,
-                                             y = avg_bookingwindow)) +
-        geom_boxplot(color = "#628e6e") +
-        geom_jitter(aes(color = fy),
-                    alpha = 0.3,
-                    size = 0.9) +
-        theme_minimal() +
-        theme(legend.position = "none") +
-        coord_flip() +
-        labs(x = NULL,
-             y = "Average booking window (days)")
-      
-      bw_plot
-    })
-      
-  }
-)
-
-
-```
-
-### Chart D {.no-title}
-
-```{r}
-# # read in raw data
-# df_race <-
-#   get_acs(
-#     geography = "zcta",
-#     # year = 2018,
-#     ## NOTEHD: As of the 2020 ACS,
-#     ## subsetting by state is no longer supported for ZCTAs on the API side
-#     # state = "California",
-#     # survey = "acs5",
-#     summary_var = "B03002_001",
-#     #Estimate!!Total:
-#     variables = c(
-#       white = "B03002_003",
-#       #Estimate!!Total!!Not Hispanic or Latino!!White alone
-#       black = "B03002_004",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!Black or African American alone
-#       native_american = "B03002_005",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!American Indian and Alaska Native alone
-#       asian = "B03002_006",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!Asian alone
-#       pacific_islander = "B03002_007",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone
-#       other = "B03002_008",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!Some other race alone
-#       multiracial = "B03002_009",
-#       # Estimate!!Total:!!Not Hispanic or Latino!!Two or more races
-#       hispanic_latinx = "B03002_012" # Estimate!!Total!!Hispanic or Latino
-#     )
-#   ) %>%
-#   clean_names() %>%
-#   rename(race = variable) %>%
-#   # create column of 5 digit ZIP code
-#   mutate(zip_code = str_sub(name, start = -5, end = -1))
-# 
-# # CA zip codes
-# zipCA <- zipcodeR::zip_code_db %>% filter(state == "CA")
-# 
-# zipCA <- as.vector(zipCA$zipcode)
-# 
-# # calculate percentage
-# df_percent <-
-#   df_race %>%
-#   # # just CA zips
-#   # filter(zip_code %in% zipCA) %>%
-#   group_by(zip_code, race) %>%
-#   summarise(
-#     estimate = sum(estimate),
-#     moe = sum(moe),
-#     summary_est = unique(summary_est),
-#     summary_moe = unique(summary_moe),
-#     percent = estimate / summary_est
-#   ) %>% 
-#   rename(race_percentage = percent)
-# 
-# race_park_subset <- usfs_ridb2021 %>% 
-#   select(park,
-#          customerzip) %>%
-#   left_join(df_percent, by = c("customerzip" = "zip_code"))
-# 
-# 
-# not_reactive_race_top_quartile_res_plot <- function(admin_unit,
-#                                                     site,
-#                                                     race_top_quartile_df) {
-#   # create reactive dataframe and further subset
-#   plot_data <- race_top_quartile_df %>%
-#     # filter to user site of choice
-#     filter(park == site) %>%
-#     # select to variables of interest
-#     select(park, customerzip,
-#            race, race_percentage) %>%
-#     drop_na(race_percentage) %>%
-#     # summarize to inner quartile range, median, and total reservations
-#     group_by(race) %>%
-#     summarize(count = n())
-#   
-#   # parameters
-#   race_group_colors <-
-#     c(
-#       "Other Race(s)" = "#999999",
-#       "Pacific Islander" = "#E69F00",
-#       "Multiracial" = "#56B4E9",
-#       "Asian" = "#009E73",
-#       "Black" = "#F0E442",
-#       "White" = "#0072B2",
-#       "Native American" = "#D55E00",
-#       "Hispanic Latinx" = "#CC79A7"
-#     )
-#   
-#   # create plot
-#   plotly <- ggplot(data = plot_data) +
-#     geom_col(aes(
-#       x = count,
-#       y = reorder(race, count),
-#       fill = race,
-#       text = paste0(
-#         scales::comma(count, accuracy = 1),
-#         " reservations were made<br>by people who live in<br>ZIP codes with high<br>",
-#         race,
-#         " populations."
-#       )
-#     )) +
-#     scale_x_continuous(labels = comma_format(accuracy = 1)) +
-#     scale_y_discrete(expand = c(0.1, 0)) +
-#     scale_fill_manual(values = race_group_colors) +
-#     scale_color_manual(values = race_group_colors) +
-#     labs(x = paste("Number of Reservations"),
-#          y = "") +
-#     theme_minimal() +
-#     theme(
-#       plot.background = element_rect("white"),
-#       panel.grid.major.y = element_blank(),
-#       legend.position = "none",
-#       axis.title.x = element_text(size = 8),
-#       axis.title.y = element_text(size = 8)
-#     )
-#   
-#   # create plotly
-#   ggplotly(
-#     plotly,
-#     tooltip = list("text"),
-#     height = 600,
-#     width = 450
-#   ) %>%
-#     config(
-#       modeBarButtonsToRemove = list(
-#         "zoom",
-#         "pan",
-#         "select",
-#         "zoomIn",
-#         "zoomOut",
-#         "lasso2d",
-#         "resetScale2d",
-#         "autoScale2d",
-#         "hoverClosestCartesian",
-#         "hoverCompareCartesian"
-#       )
-#     ) %>%
-#     layout(title = list(
-#       text = paste0(
-#         "Number of Reservations to this site coming from<br>ZIP codes with high proportions of:"
-#       ),
-#       font = list(size = 14.5)
-#     ))
-#   
-# } # EO function
-# 
-# not_reactive_race_top_quartile_res_plot(admin_unit = "Inyo National Forest",
-#                                         site = "Convict Lake Campground",
-#                                         race_park_subset)
-# 
-#   # create reactive dataframe and further subset
-#   plot_data <- race_park_subset %>%
-#     # filter to user site of choice
-#     filter(park == "Convict Lake Campground") %>%
-#     # select to variables of interest
-#     select(park, customerzip,
-#            race, race_percentage) %>%
-#     drop_na(race_percentage) %>%
-#     # summarize to inner quartile range, median, and total reservations
-#     group_by(race) %>%
-#     summarize(count = n())
-```
-
-
-```{r}
-# read in raw data
-df_race <-
-  get_acs(
-    geography = "zcta",
-    # year = 2018,
-    ## NOTEHD: As of the 2020 ACS,
-    ## subsetting by state is no longer supported for ZCTAs on the API side
-    # state = "California",
-    # survey = "acs5",
-    summary_var = "B03002_001",
-    #Estimate!!Total:
-    variables = c(
-      white = "B03002_003",
-      #Estimate!!Total!!Not Hispanic or Latino!!White alone
-      black = "B03002_004",
-      # Estimate!!Total:!!Not Hispanic or Latino!!Black or African American alone
-      native_american = "B03002_005",
-      # Estimate!!Total:!!Not Hispanic or Latino!!American Indian and Alaska Native alone
-      asian = "B03002_006",
-      # Estimate!!Total:!!Not Hispanic or Latino!!Asian alone
-      pacific_islander = "B03002_007",
-      # Estimate!!Total:!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone
-      other = "B03002_008",
-      # Estimate!!Total:!!Not Hispanic or Latino!!Some other race alone
-      multiracial = "B03002_009",
-      # Estimate!!Total:!!Not Hispanic or Latino!!Two or more races
-      hispanic_latinx = "B03002_012" # Estimate!!Total!!Hispanic or Latino
-    )
-  ) %>%
-  clean_names() %>%
-  rename(race = variable) %>%
-  # create column of 5 digit ZIP code
-  mutate(zip_code = str_sub(name, start = -5, end = -1))
-
-# CA zip codes
-zipCA <- zipcodeR::zip_code_db %>% filter(state == "CA")
-
-zipCA <- as.vector(zipCA$zipcode)
-
-# calculate percentage
-df_percent <-
-  df_race %>%
-  # just CA zips
-  filter(zip_code %in% zipCA) %>%
-  group_by(zip_code, race) %>%
-  summarise(
-    estimate = sum(estimate),
-    moe = sum(moe),
-    summary_est = unique(summary_est),
-    summary_moe = unique(summary_moe),
-    percent = estimate / summary_est
-  )
-
-# df_race <- df_percent
-
-# create column for each percentage for each group (pivot wider)
-# necessary to be able to left_join() with RIDB data
-df_percent_wider <-
-  df_percent %>%
-  select(zip_code, summary_est, race, percent) %>%
-  rename(zip_code_population = summary_est) %>%
-  pivot_wider(names_from = "race",
-              values_from = "percent")
-  
-
-usfs_ridb_race <- usfs_ridb2021 %>% 
-  left_join(df_percent_wider, by = c("customerzip" = "zip_code"))
-
-usfs_ridb_race_calc <- usfs_ridb_race %>% 
-  summarize(
-    white = mean(white, na.rm = TRUE),
-    black = mean(black, na.rm = TRUE),
-    asian = mean(asian, na.rm = TRUE),
-    multiracial = mean(multiracial, na.rm = TRUE),
-    other = mean(other, na.rm = TRUE),
-    native_american = mean(native_american, na.rm = TRUE),
-    pacific_islander = mean(pacific_islander, na.rm = TRUE),
-    hispanic_latinx = mean(hispanic_latinx, na.rm = TRUE)
-  ) %>%
-  pivot_longer(cols = 1:8,
-               names_to = "race",
-               values_to = "race_percent_average") %>%
-  mutate(race = str_replace(
-    string = race,
-    pattern = "_",
-    replacement = " "
-  ),
-  race = str_to_title(race))
-
-x_max <- max(usfs_ridb_race_calc$race_percent_average) + 0.1
-
-groups_colors_ridb_ca <- c("RIDB" = "#64863C", "CA" = "#a3a3a3")
-text_colors_ridb_ca <- c("RIDB" = "#466C04", "CA" = "#848484")
-
-ggplot(data = usfs_ridb_race_calc) +
-  geom_col(aes(
-    x = race_percent_average,
-    y = reorder(race, race_percent_average)
-  ),
-  fill = "#64863C",
-  position = "dodge") +
-  scale_x_continuous(labels = percent, limits = c(0, x_max)) +
-  scale_y_discrete(expand = c(0.3, 0)) +
-  # scale_fill_manual(values = groups_colors_ridb_ca) +
-  geom_text(
-    aes(
-      x = race_percent_average,
-      y = reorder(race, desc(race)),
-      label = scales::percent(race_percent_average, accuracy = 0.1)
-    ),
-    hjust = -0.1,
-    size = 4,
-  ) +
-  scale_color_manual(values = text_colors_ridb_ca) +
-  labs(title = "Average Race Demographics for R5 (2021)",
-       x = "Percentage (%)",
-       y = "") +
-  theme_minimal() +
-  theme(plot.background = element_rect("white"),
-        panel.grid.major.y = element_blank(),
-        text = element_text(size = 12))
-```
-
-# Rec-Sheds {data-orientation=rows}
-
-<!-- test site: Convict Lake Campground in Inyo NF -->
-
-```{r}
-test <- usfs_ridb_all %>% 
-  # Inyo NF
-  filter(park == "Convict Lake Campground")
-```
-
 
 ## Sidebar {.sidebar}
 
-Who is visiting the USFS [Pacific Southwest Region](https://www.fs.usda.gov/r5) (R5)?
-
 ```{r}
-selectInput("year", label = "Select a year:",
-            choices = c(2018, 2019, 2020, 2021), selected = 2021)
-
-selectInput("forest", label = "Select a forest:",
-            choices = sort(unique(usfs_ridb_all$forestname)), 
-            selected = "Inyo National Forest")
-
-selectInput("park", label = "Select a site:",
-            choices = sort(unique(usfs_ridb_all$park)), 
-            selected = "Convict Lake Campground")
+shiny::selectInput("forest", label = "Select a forest:",
+                   choices = sort(unique(usfs_ridb2021$forestname)),
+                   selected = "Inyo National Forest")
 ```
 
+## Column 1
 
-## Row 1
-
-### Map {.no-title}
+### R5 Map
 
 ```{r}
-# total reservations for Convict Lake Campground 
-total_reservations <- nrow(test)
+# mapview::mapview(r5_au_bounds)
 
-# number of reservations and % per state
-map_data <- test %>%
-  group_by(customerzip, state_full) %>%
-  summarize(
-    number_reservations = n(),
-    percentage_reservations = percent((number_reservations / total_reservations), 
-                                      accuracy = 0.01)
-  ) %>%
-  filter(!is.na(customerzip))
+# create subset of park info
+park_sub_sf <- usfs_ridb2021 %>% 
+  dplyr::group_by(forestname,
+                  park,
+                  sitetype,
+                  facilityzip,
+                  facilitylongitude,
+                  facilitylatitude) %>%
+  dplyr::summarize(n = n()) %>%
+  # filter(is.na(sitetype) == TRUE)
+  dplyr::select(!n) %>%
+  # create as sf object with 4326 crs
+  st_as_sf(
+    coords = c("facilitylongitude", "facilitylatitude"),
+    crs = 4326,
+    remove = FALSE
+  )
 
-# map_data <- test %>%
-#   filter(!is.na(customerzip)) %>% 
-#   group_by(fy, state_full) %>%
-#   summarize(
-#     number_reservations = n(),
-#     # percentage_reservations = round((number_reservations / total_reservations) * 100,
-#     #                                 1)
-#     percentage_reservations = percent((number_reservations / total_reservations),
-#                                       accuracy = 0.01)
-#   )
+# transform to 4326 crs
+r5_bounds <- r5_au_bounds %>% sf::st_as_sf(crs = 4326)
+
+reactive_r5_bounds <- shiny::reactive({
+  r5_bounds %>%
+    filter(forestname == input$forest)
+})
+
+reactive_park <- shiny::reactive({
+  park_sub_sf %>% 
+    filter(forestname == input$forest)
+})
+
+leaflet::renderLeaflet({
   
-```
-
-
-```{r}
-# get state geometries
-## -- ZIP codes and respective states -- ##
-fips_list <-
-  c(
-    "01",
-    "02",
-    "04",
-    "05",
-    "06",
-    "08",
-    "09",
-    "10",
-    "11",
-    "12",
-    "13",
-    "15",
-    "16",
-    "17",
-    "18",
-    "19",
-    "20",
-    "21",
-    "22",
-    "23",
-    "24",
-    "25",
-    "26",
-    "27",
-    "28",
-    "29",
-    "30",
-    "31",
-    "32",
-    "33",
-    "34",
-    "35",
-    "36",
-    "37",
-    "38",
-    "39",
-    "40",
-    "41",
-    "42",
-    "44",
-    "45",
-    "46",
-    "47",
-    "48",
-    "49",
-    "50",
-    "51",
-    "53",
-    "54",
-    "55",
-    "56",
-    "72"
+  camping_icon <- makeIcon(
+    here("images/camping_location_icon.png"),
+    iconWidth = 25,
+    iconHeight = 25
   )
-state_list <-
-  c(
-    "AL",
-    "AK",
-    "AZ",
-    "AR",
-    "CA",
-    "CO",
-    "CT",
-    "DE",
-    "DC",
-    "FL",
-    "GA",
-    "HI",
-    "ID",
-    "IL",
-    "IN",
-    "IA",
-    "KS",
-    "KY",
-    "LA",
-    "ME",
-    "MD",
-    "MA",
-    "MI",
-    "MN",
-    "MS",
-    "MO",
-    "MT",
-    "NE",
-    "NV",
-    "NH",
-    "NJ",
-    "NM",
-    "NY",
-    "NC",
-    "ND",
-    "OH",
-    "OK",
-    "OR",
-    "PA",
-    "RI",
-    "SC",
-    "SD",
-    "TN",
-    "TX",
-    "UT",
-    "VT",
-    "VA",
-    "WA",
-    "WV",
-    "WI",
-    "WY",
-    "PR"
-  )
-states_names_list <-
-  c(
-    "Alabama",
-    "Alaska",
-    "Arizona",
-    "Arkansas",
-    "California",
-    "Colorado",
-    "Connecticut",
-    "Delaware",
-    "District of Columbia",
-    "Florida",
-    "Georgia",
-    "Hawaii",
-    "Idaho",
-    "Illinois",
-    "Indiana",
-    "Iowa",
-    "Kansas",
-    "Kentucky",
-    "Louisiana",
-    "Maine",
-    "Maryland",
-    "Massachusetts",
-    "Michigan",
-    "Minnesota",
-    "Mississippi",
-    "Missouri",
-    "Montana",
-    "Nebraska",
-    "Nevada",
-    "New Hampshire",
-    "New Jersey",
-    "New Mexico",
-    "New York",
-    "North Carolina",
-    "North Dakota",
-    "Ohio",
-    "Oklahoma",
-    "Oregon",
-    "Pennsylvania",
-    "Rhode Island",
-    "South Carolina",
-    "South Dakota",
-    "Tennessee",
-    "Texas",
-    "Utah",
-    "Vermont",
-    "Virginia",
-    "Washington",
-    "West Virginia",
-    "Wisconsin",
-    "Wyoming",
-    "Puerto Rico"
-  )
-
-# create dataframe of states
-df_states_fips <- as.data.frame(list(
-  fips = fips_list,
-  state = state_list,
-  state_full = states_names_list
-))
-
-# loop through state df to get all ZIP codes w/in state
-df_states_zip_codes <- data.frame()
-
-for (i in seq_along(fips_list)) {
-  state <- zipcodeR::search_fips(state_fips = fips_list[[i]]) %>%
-    select(zipcode, state)
-  df_states_zip_codes <- rbind(df_states_zip_codes, state)
-}
-# add full state name, fips code, etc. to list of all ZIP codes for each state
-df_states_fips_zip_codes <-
-  left_join(x = df_states_zip_codes,
-            y = df_states_fips,
-            by = "state") %>%
-  select(fips, zipcode) %>%
-  rename(zip_code = zipcode)
-
-df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
-  select(GEOID, STUSPS, NAME, geometry) %>%
-  rename(fips = GEOID,
-         state_abbrev = STUSPS,
-         state = NAME) %>%
-  rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)  
-
-## combine dfs ##
-
-# filtered map_data
-# subset_map_data <- map_data %>% filter(fy == 2021)
-
-map_data_geometries <-
-  df_state_geometries_us %>%
-  left_join(map_data,
-            by = c("state" = "state_full")) %>%
-  mutate_at(vars(number_reservations),
-            ~ replace(number_reservations, is.na(number_reservations), 0)) %>%
-  mutate_at(vars(percentage_reservations),
-            ~ replace(percentage_reservations, is.na(percentage_reservations), 0)) %>%
-  select(state,
-         number_reservations,
-         percentage_reservations,
-         geometry)
-
-# transform to 4326 crs
-map_data_geometries <- map_data_geometries %>% st_transform(crs = 4326)
-```
-
-
-```{r}
-# location of site for point on map
-site_location_map <- usfs_ridb2021 %>%
-  group_by(park) %>%
-  summarise(
-    facilitylatitude = median(facilitylatitude),
-    facilitylongitude = median(facilitylongitude)
-  ) %>%
-  filter(park == "Convict Lake Campground")
-```
-
-
-```{r}
-r5_sites <- usfs_ridb_all %>%
-  group_by(forestname,
-           park,
-           facilitylongitude,
-           facilitylatitude) %>% 
-  summarize(n = n()) %>% 
-  select(!n) %>%
-  st_as_sf(coords = c("facilitylongitude", "facilitylatitude"), crs = 4326)
-```
-
-
-```{r}
-# transform to 4326 crs
-r5_au_bounds <- r5_au_bounds %>% st_transform(crs = 4326)
-```
-
-
-```{r}
-# mapview(list(r5_au_bounds, r5_sites))
-```
-
-
-```{r}
-# # usfs map
-# leaflet() %>% 
-#   setView(lat = 36.7783, lng = -119.4179, # center of CA
-#           zoom = 5.5) %>% 
-#   addPolygons(
-#     data = r5_au_bounds,
-#     weight = 1
-#   ) %>% 
-#   addProviderTiles(
-#     providers$CartoDB.Voyager
-#     ) 
-```
-
-
-```{r}
-camping_icon <- makeIcon(here("images/camping_location_icon.png"),
-                         iconWidth = 25, iconHeight = 25)
-
-leaflet() %>% 
-  setView(lat = 49.850033, lng = -118.6500523, zoom = 3) %>% 
-  addPolygons(
-    data = map_data_geometries,
-    weight = 1,
-    fillColor = "purple",
-    # ~colorBin("purple", percentage_reservations)(percentage_reservations)
-    color = "white",
-    popupOptions = popupOptions()
-  ) %>% 
-  addLegend(
-    "topright",
-    title = "Number of Visits",
-    pal = colorBin("purple", map_data_geometries$number_reservations),
-    values = map_data_geometries$number_reservations,
-    opacity = 1
-  ) %>%
-  addProviderTiles(
-    providers$CartoDB.Voyager
+  
+  leaflet() %>%
+    addPolygons(
+      data = reactive_r5_bounds(),
+      weight = 1,
+      popup = paste0(reactive_r5_bounds()$forestname)
+    ) %>%
+    addMarkers(
+      lng = reactive_park()$facilitylongitude,
+      lat = reactive_park()$facilitylatitude,
+      popup = paste0(reactive_park()$park,
+                     "<br>",
+                     "Type of site: ",
+                     reactive_park()$sitetype),
+      icon = camping_icon
     ) %>% 
-  addMarkers(lng = site_location_map$facilitylongitude,
-             lat = site_location_map$facilitylatitude,
-             popup = site_location_map$park,
-             icon = camping_icon)
+    addProviderTiles(providers$CartoDB.Voyager)
+})
 ```
 
 
-## Row 2
-
-### Total number of visits to selected site in 2021
+## Column 2
+ 
+### US Visitorshed Map
 
 ```{r}
-valueBox(prettyNum(nrow(test), big.mark = ","), 
-         color = "success")
+
 ```
 
-
-### Median cost of selected site in 2021
+### Visitor Data
 
 ```{r}
-# rm inf and neg values
-cost_df <- test %>% 
-  filter(is.infinite(dailycost) != TRUE) %>% 
-  filter(dailycost > 0)
 
-# NOTEHD: right skewed so using median
-# ggplot(data = cost_df, aes(x = dailycost)) + geom_histogram()
-
-median_cost <- median(cost_df$dailycost)
-
-valueBox(paste0("$", median_cost),
-         color = "warning")
 ```
 
 
-### Average number of people per reservation for selected site in 2021
-
-```{r}
-convictlake_2021 <- test %>% filter(fy == 2021)
-
-mean_numofppl <-  mean(convictlake_2021$numberofpeople, na.rm = TRUE)
-
-valueBox(round(mean_numofppl, 0), color = "info")
-```
-
-
-<!-- example code -->
-
-```{r eval=FALSE}
-# Total number of visits to R5 sites in 2021
-r5_2021_visits <- usfs_ridb_all %>% filter(fy == 2021)
-
-valueBox(prettyNum(nrow(r5_2021_visits), big.mark = ","), 
-         color = "success")
-```
-
-
-```{r eval=FALSE}
-# Most visited forest in 2021
-most_visited_forest <- usfs_ridb_all %>% 
-  filter(fy == 2021) %>% 
-  count(forestname) %>% 
-  filter(n == max(n))
-
-valueBox(paste0(prettyNum(most_visited_forest$n, big.mark = ","),
-                " visits to ",
-                most_visited_forest$forestname),
-         color = "info")
-```
-
-
-```{r eval=FALSE}
-# Median cost in 2021
-
-# rm inf and neg values
-cost_df <- usfs_ridb2021 %>% 
-  filter(is.infinite(dailycost) != TRUE) %>% 
-  filter(dailycost > 0)
-
-# NOTEHD: right skewed so using median
-ggplot(data = cost_df, aes(x = dailycost)) + geom_histogram()
-
-median_cost <- median(cost_df$dailycost)
-
-valueBox(paste0("$", median_cost),
-         color = "warning")
-```
