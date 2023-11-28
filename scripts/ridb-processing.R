@@ -1,5 +1,5 @@
 ## TO DO ##
-# calculate distance traveled
+# calculate distance traveled - do we want this as a sep table or part of the df?
 # turn into functions:
 ## add state names + zips (do we want county level data?)
 ## rbind dfs
@@ -938,6 +938,11 @@ usfs_ridb2020 <- usfs_ridb %>%
 # calculate distance traveled ----
 # see ridb-dist-traveled.R script
 
+usfs_ridb2018_dist <- zipcodeR::zip_distance(usfs_ridb2018$facilityzip, usfs_ridb2018$customerzip) %>% 
+  rename(facilityzip = zipcode_a) %>% 
+  rename(customerzip = zipcode_b) %>% 
+  rename(distance_mi = distance)
+
 # combine data ----
 # 2018 processed (300,809 obs)
 # 2019 processed (228,956 obs)
@@ -953,6 +958,7 @@ usfs_ridb_all <- usfs_ridb2018 %>%
 write_csv(usfs_ridb_all, here("data/ridb/clean/usfs_ridb_all.csv"))
 
 # testing(functions) ----
+# 2018 #
 usfs_ridb2018 <- subset_ridb(raw_df = usfs_ridb_test2018)
 usfs_ridb2018 <- clean_customer_zips(subset_df = usfs_ridb2018)
 usfs_ridb2018 <- clean_forestname(customer_zips_df = usfs_ridb2018,
@@ -962,10 +968,37 @@ usfs_ridb2018 <- clean_facility_location(park_df = usfs_ridb2018)
 usfs_ridb2018 <- calc_vars(facility_location_df = usfs_ridb2018)
 usfs_ridb2018 <- clean_sitetype(calc_vars_df = usfs_ridb2018)
 
-usfs_ridb2018_dist <- zipcodeR::zip_distance(usfs_ridb2018$facilityzip, usfs_ridb2018$customerzip) %>% 
-  rename(facilityzip = zipcode_a) %>% 
-  rename(customerzip = zipcode_b) %>% 
-  rename(distance_mi = distance)
+# 2019 #
+usfs_ridb2019 <- subset_ridb(raw_df = usfs_ridb_test2019)
+usfs_ridb2019 <- clean_customer_zips(subset_df = usfs_ridb2019)
+usfs_ridb2019 <- clean_forestname(customer_zips_df = usfs_ridb2019,
+                                  forestname_vec = forestname_vec)
+usfs_ridb2019 <- clean_park(forestname_df = usfs_ridb2019)
+usfs_ridb2019 <- clean_facility_location(park_df = usfs_ridb2019)
+usfs_ridb2019 <- calc_vars(facility_location_df = usfs_ridb2019)
+usfs_ridb2019 <- clean_sitetype(calc_vars_df = usfs_ridb2019)
+
+# 2020 #
+usfs_ridb2020 <- subset_ridb(raw_df = usfs_ridb_test2020)
+usfs_ridb2020 <- clean_customer_zips(subset_df = usfs_ridb2020)
+usfs_ridb2020 <- clean_forestname(customer_zips_df = usfs_ridb2020,
+                                  forestname_vec = forestname_vec)
+usfs_ridb2020 <- clean_park(forestname_df = usfs_ridb2020)
+usfs_ridb2020 <- clean_facility_location(park_df = usfs_ridb2020)
+usfs_ridb2020 <- calc_vars(facility_location_df = usfs_ridb2020)
+usfs_ridb2020 <- clean_sitetype(calc_vars_df = usfs_ridb2020)
+
+# 2021 #
+usfs_ridb2021 <- subset_ridb(raw_df = usfs_ridb_test2021)
+usfs_ridb2021 <- clean_customer_zips(subset_df = usfs_ridb2021)
+usfs_ridb2021 <- clean_forestname(customer_zips_df = usfs_ridb2021,
+                                  forestname_vec = forestname_vec)
+usfs_ridb2021 <- clean_park(forestname_df = usfs_ridb2021)
+usfs_ridb2021 <- clean_facility_location(park_df = usfs_ridb2021)
+usfs_ridb2021 <- calc_vars(facility_location_df = usfs_ridb2021)
+usfs_ridb2021 <- clean_sitetype(calc_vars_df = usfs_ridb2021)
+
+write_csv(usfs_ridb2021, here("data/ridb/clean/usfs_ridb2021_no_dist_travel.csv"))
 
 # notes ----
 
