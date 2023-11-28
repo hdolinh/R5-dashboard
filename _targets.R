@@ -87,15 +87,15 @@ list(
                                       park_df = process_park)
   ),
   tar_target(
-    name = process_sitetype,
-    command = clean_sitetype(sitetype_df = sitetype_df,
-                             facility_location_df = process_facility_location)
-  ),
-  tar_target(
     # length of stay, booking window, daily cost, daily cost per visitor
     name = create_vars,
     command = calc_vars(calc_vars_df = calc_vars_df,
-                        sitetype_df = process_sitetype)
+                        facility_location_df = process_facility_location)
+  ),
+  tar_target(
+    name = process_sitetype,
+    command = clean_sitetype(sitetype_df = sitetype_df,
+                             calc_vars_df = create_vars)
   )
   
   
