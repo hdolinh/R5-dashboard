@@ -1,15 +1,15 @@
 ---
 title: "R5 Rec-Shed Dashboard"
-output: 
+output:
   flexdashboard::flex_dashboard:
-    vertical-layout: fill
+    orientation: row
     theme:
-      primary: "#217a38"
-      secondary: "#24583b"
-      success: "#96d4ac"
-      info: "#2f5b75"
-      warning: "#ffc734"
-      danger: "#892f31"
+      primary: '#217a38'
+      secondary: '#24583b'
+      success: '#96d4ac'
+      info: '#2f5b75'
+      warning: '#ffc734'
+      danger: '#892f31'
       base_font:
         google: Nunito
       code_font:
@@ -22,9 +22,8 @@ runtime: shiny
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(mapview)
-library(here)
 library(sf)
-library(vroom)
+library(here)
 library(dplyr)
 library(tidyr)
 library(leaflet)
@@ -43,18 +42,38 @@ library(plotly)
 ```
 
 ```{r read in data}
+# NOTEHD: saved data as rds files which are smaller
+
 # spatial 
-r5_au_bounds <- sf::read_sf(here::here("data/spatial/clean/"))
+r5_au_bounds <- readRDS("r5_au_bounds.rds")
+# NOTEHD: run to get data in global environment
+# r5_au_bounds <- readRDS("dashboard/r5_au_bounds.rds")
 
 # ridb
-usfs_ridb2021 <- vroom::vroom(here::here("data/ridb/clean/usfs_ridb2021_no_dist_travel.csv"))
+usfs_ridb2021 <- readRDS("usfs_ridb2021_no_dist_travel.rds")
+# NOTEHD: run to get data in global environment
+# usfs_ridb2021 <- readRDS("dashboard/usfs_ridb2021_no_dist_travel.rds")
+
+df_state_geometries_us <- readRDS("df_state_geometries_us.rds")
 
 # Inyo National Forest subset
 inyo_usfs_ridb2021 <- usfs_ridb2021 %>% 
   dplyr::filter(forestname == "Inyo National Forest")
+
+# rsconnect::configureApp("prototype-r5-dashboard", size="xlarge")
 ```
 
+# Maps {data-orientation=columns}
+
 ## Sidebar {.sidebar}
+
+```{r}
+shiny::radioButtons("year", label = "Select a year:",
+                          choices = sort(unique(usfs_ridb2021$year)),
+                          selected = 2021,
+                          inline = TRUE)
+```
+
 
 ```{r}
 shiny::selectInput("forest", label = "Select a forest:",
@@ -62,7 +81,13 @@ shiny::selectInput("forest", label = "Select a forest:",
                    selected = "Inyo National Forest")
 ```
 
-## Column 1
+Add explanatory text here
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Sit amet purus gravida quis blandit turpis cursus. Eget aliquet nibh praesent tristique magna sit. Consequat ac felis donec et odio pellentesque. Amet mauris commodo quis imperdiet massa tincidunt nunc pulvinar sapien. Aliquam nulla facilisi cras fermentum odio eu feugiat pretium. 
+
+## Column 1 {data-width=300}
 
 ### R5 Map
 
@@ -71,14 +96,15 @@ shiny::selectInput("forest", label = "Select a forest:",
 
 # create subset of park info
 park_sub_sf <- usfs_ridb2021 %>% 
-  dplyr::group_by(forestname,
+  dplyr::group_by(year,
+                  forestname,
                   park,
                   sitetype,
                   facilityzip,
                   facilitylongitude,
                   facilitylatitude) %>%
   dplyr::summarize(n = n()) %>%
-  # filter(is.na(sitetype) == TRUE)
+  # filter(is.na(sitetype) == TRUE) NOTEHD: Need to decide site types for NA sitetypes (e.g. xmas tree permits)
   dplyr::select(!n) %>%
   # create as sf object with 4326 crs
   st_as_sf(
@@ -97,13 +123,15 @@ reactive_r5_bounds <- shiny::reactive({
 
 reactive_park <- shiny::reactive({
   park_sub_sf %>% 
+    filter(year == input$year) %>% 
     filter(forestname == input$forest)
 })
 
 leaflet::renderLeaflet({
   
   camping_icon <- makeIcon(
-    here("images/camping_location_icon.png"),
+    "camping_location_icon.png",
+    # here("images/camping_location_icon.png"), NOTEHD: run locally?
     iconWidth = 25,
     iconHeight = 25
   )
@@ -128,9 +156,107 @@ leaflet::renderLeaflet({
 ```
 
 
-## Column 2
- 
-### US Visitorshed Map
+## Column 2 {data-width=500}
+
+### Visits CA ZIP Codes
+
+```{r}
+# ca_zips <- tigris::zctas()
+# 
+# # 1,763 zips in CA according to ACS
+# zip_ca <- zipcodeR::zip_code_db %>% 
+#   filter(state == "CA") %>% 
+#   filter(zipcode_type == "Standard") %>% 
+#   select(zipcode,
+#          major_city,
+#          county)
+# 
+# joined_zips <- left_join(zip_ca, ca_zips, by = c("zipcode" = "ZCTA5CE20")) 
+# 
+# # 38 zips NA meaning no geoms
+# # test_zips <- joined_zips %>% 
+# #   filter(is.na(GEOID20) == TRUE)
+# 
+# clean_ca_zips <- joined_zips %>% 
+#   filter(is.na(GEOID20) == FALSE) %>% 
+#   select(zipcode,
+#          major_city,
+#          county,
+#          geometry) %>% 
+#   st_as_sf() %>% 
+#   st_transform(4326) %>% 
+#   rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+# 
+# # mapview::mapview(clean_ca_zips)
+# 
+# ridb_zip_visits <- usfs_ridb2021 %>% 
+#   select(year,
+#          forestname,
+#          customerzip)
+# 
+# ca_zip_visits_map <- left_join(clean_ca_zips, ridb_zip_visits,
+#                                by = c("zipcode" = "customerzip"))
+# # count num of visits by zip code
+# ca_zip_visits_map <- ca_zip_visits_map %>% 
+#   group_by(year,
+#            forestname,
+#            zipcode,
+#            major_city,
+#            county) %>% 
+#   summarize(count = n())
+# 
+# saveRDS(ca_zip_visits_map, "dashboard/ca_zip_visits_map.rds")
+
+ca_zip_visits_map <- readRDS("ca_zip_visits_map.rds")
+# NOTEHD: run in rmd
+# ca_zip_visits_map <- readRDS("dashboard/ca_zip_visits_map.rds")
+
+# reactive df
+reactive_ca_zip_visits_map <- shiny::reactive({
+  ca_zip_visits_map %>%
+    filter(year == input$year) %>% 
+    filter(forestname == input$forest)
+})
+
+leaflet::renderLeaflet({
+  bins <- c(0, 5, 10, 50, 80, 100, 800, 1000, 3000)
+  pal <- colorBin("BrBG", domain = reactive_ca_zip_visits_map()$count, 
+                  bins = bins)
+
+  leaflet() %>%
+    setView(lat = 36.9999,
+            lng = -119.4179,
+            zoom = 5) %>%
+    addPolygons(
+      data = reactive_ca_zip_visits_map(),
+      weight = 0.5,
+      opacity = 1,
+      fillColor = ~ pal(count),
+      fillOpacity = 0.7,
+      color = "black",
+      popup = paste0(
+        reactive_ca_zip_visits_map()$zipcode,
+        "<br>",
+        reactive_ca_zip_visits_map()$major_city,
+        "<br>",
+        reactive_ca_zip_visits_map()$county,
+        "<br>",
+        "Total number of visits: ",
+        reactive_ca_zip_visits_map()$count
+      )
+    ) %>%
+    addLegend(
+      "topright",
+      title = "Number of Visits",
+      pal = pal,
+      values = bins,
+      opacity = 1
+    ) %>%
+    addProviderTiles(providers$CartoDB.Voyager)
+})
+```
+
+### Visits by State 
 
 ```{r}
 
@@ -148,14 +274,18 @@ state_zip_usfs_ridb2021 <- left_join(usfs_ridb2021, zip_sub,
   relocate(customerstate, .before = totalpaid)
 
 # state geoms
-df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
-  select(STUSPS, geometry) %>%
-  rename(state_abbrev = STUSPS) %>%
-  rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+# df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
+#   select(STUSPS, geometry) %>%
+#   rename(state_abbrev = STUSPS) %>%
+#   rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+# 
+# saveRDS(df_state_geometries_us,
+#         "dashboard/df_state_geometries_us.rds")
 
 # summarize ridb2021 data
 summary_state_zip_usfs_ridb2021 <- state_zip_usfs_ridb2021 %>% 
-  group_by(forestname,
+  group_by(year,
+           forestname,
            customerstate) %>% 
   summarize(count = n())
 
@@ -168,17 +298,18 @@ map_data <- df_state_geometries_us %>%
 # reactive df
 reactive_map_data <- shiny::reactive({
   map_data %>%
+    filter(year == input$year) %>%
     filter(forestname == input$forest)
 })
 
 # map
 leaflet::renderLeaflet({
   bins <- c(0, 10, 50, 100, 200, 500, 800, 1000, 2000, 5000, 150000)
-  pal <- colorBin("YlOrRd", domain = reactive_map_data()$count, bins = bins)
+  pal <- colorBin("BrBG", domain = reactive_map_data()$count, bins = bins)
   
   leaflet() %>%
     setView(lat = 49.850033,
-            lng = -118.6500523,
+            lng = -100.6500523,
             zoom = 2) %>%
     addPolygons(
       data = reactive_map_data(),
@@ -190,18 +321,50 @@ leaflet::renderLeaflet({
       popup = paste0(
         reactive_map_data()$state_abbrev,
         "<br>",
-        "Total counts of visits: ",
+        "Total number of visits: ",
         reactive_map_data()$count
       )
+    ) %>%
+    addLegend(
+      "topright",
+      title = "Number of Visits",
+      pal = pal,
+      values = bins,
+      opacity = 1
     ) %>%
     addProviderTiles(providers$CartoDB.Voyager)
 })
 ```
 
+
+# Visitor Data {data-orientation=rows}
+
+## Row 1
+
 ### Visitor Data
 
 ```{r}
+table_data <- usfs_ridb2021 %>% 
+  select(year,
+        forestname,
+        park,
+        sitetype,
+        numberofpeople,
+        lengthofstay,
+        bookingwindow,
+        dailycost,
+        dailycostpervisitor) %>% 
+  filter(year == "2021") %>% 
+  filter(forestname == "Inyo National Forest") %>%
+  group_by(park) %>% 
+  summarize(
+    mean_numofppl = round(mean(numberofpeople), 0),
+    mean_lengthofstay = round(mean(lengthofstay), 1),
+    mean_bookingwindow = round(mean(bookingwindow), 1),
+    mean_dailycost = round(mean(dailycost), 2),
+    mean_dailycostpervisitor = round(mean(dailycostpervisitor), 2)
+  )
 
+DT::datatable(table_data)
 ```
-
 
