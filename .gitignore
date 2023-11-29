@@ -1,6 +1,7 @@
 # Data
 data/*
 dashboard/data*
+*.rds
 
 # History files
 .Rhistory
