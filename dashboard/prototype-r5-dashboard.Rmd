@@ -134,6 +134,68 @@ leaflet::renderLeaflet({
 
 ```{r}
 
+# zip code state info using `zipcodeR`
+zip_sub <- zipcodeR::zip_code_db %>% 
+  select(
+    zipcode,
+    state
+  )
+
+# joined customer state info
+state_zip_usfs_ridb2021 <- left_join(usfs_ridb2021, zip_sub, 
+                                     by = c("customerzip" = "zipcode")) %>% 
+  rename(customerstate = state) %>% 
+  relocate(customerstate, .before = totalpaid)
+
+# state geoms
+df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
+  select(STUSPS, geometry) %>%
+  rename(state_abbrev = STUSPS) %>%
+  rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+
+# summarize ridb2021 data
+summary_state_zip_usfs_ridb2021 <- state_zip_usfs_ridb2021 %>% 
+  group_by(forestname,
+           customerstate) %>% 
+  summarize(count = n())
+
+# join data
+map_data <- df_state_geometries_us %>% 
+  left_join(summary_state_zip_usfs_ridb2021,
+            by = c("state_abbrev" = "customerstate")) %>%
+  st_transform(crs = 4326)
+
+# reactive df
+reactive_map_data <- shiny::reactive({
+  map_data %>%
+    filter(forestname == input$forest)
+})
+
+# map
+leaflet::renderLeaflet({
+  bins <- c(0, 10, 50, 100, 200, 500, 800, 1000, 2000, 5000, 150000)
+  pal <- colorBin("YlOrRd", domain = reactive_map_data()$count, bins = bins)
+  
+  leaflet() %>%
+    setView(lat = 49.850033,
+            lng = -118.6500523,
+            zoom = 2) %>%
+    addPolygons(
+      data = reactive_map_data(),
+      weight = 1,
+      opacity = 1,
+      fillColor = ~ pal(count),
+      fillOpacity = 0.7,
+      color = "white",
+      popup = paste0(
+        reactive_map_data()$state_abbrev,
+        "<br>",
+        "Total counts of visits: ",
+        reactive_map_data()$count
+      )
+    ) %>%
+    addProviderTiles(providers$CartoDB.Voyager)
+})
 ```
 
 ### Visitor Data
