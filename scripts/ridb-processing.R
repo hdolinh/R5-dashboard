@@ -998,7 +998,10 @@ usfs_ridb2021 <- clean_facility_location(park_df = usfs_ridb2021)
 usfs_ridb2021 <- calc_vars(facility_location_df = usfs_ridb2021)
 usfs_ridb2021 <- clean_sitetype(calc_vars_df = usfs_ridb2021)
 
-write_csv(usfs_ridb2021, here("data/ridb/clean/usfs_ridb2021_no_dist_travel.csv"))
+usfs_ridb2020and2021 <- rbind(usfs_ridb2020, usfs_ridb2021)
+
+write_rds(usfs_ridb2020and2021, here("data/ridb/clean/usfs_ridb2020and2021_no_dist_travel.rds"))
+
 
 # notes ----
 

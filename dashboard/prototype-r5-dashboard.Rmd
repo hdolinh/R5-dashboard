@@ -2,7 +2,9 @@
 title: "R5 Rec-Shed Dashboard"
 output:
   flexdashboard::flex_dashboard:
-    orientation: row
+    storyboard: true
+    orientation: columns
+    vertical_layout: scroll
     theme:
       primary: '#217a38'
       secondary: '#24583b'
@@ -21,7 +23,6 @@ runtime: shiny
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
-library(mapview)
 library(sf)
 library(here)
 library(dplyr)
@@ -33,11 +34,9 @@ library(tigris)
 library(RColorBrewer)
 library(zipcodeR)
 library(shiny)
-library(ggiraph)
 library(janitor)
 library(tidycensus)
 library(stringr)
-library(plotly)
 # bslib::bs_themer()
 ```
 
@@ -50,34 +49,43 @@ r5_au_bounds <- readRDS("r5_au_bounds.rds")
 # r5_au_bounds <- readRDS("dashboard/r5_au_bounds.rds")
 
 # ridb
-usfs_ridb2021 <- readRDS("usfs_ridb2021_no_dist_travel.rds")
+usfs_ridb2020and2021 <- readRDS("usfs_ridb2020and2021_no_dist_travel.rds")
 # NOTEHD: run to get data in global environment
-# usfs_ridb2021 <- readRDS("dashboard/usfs_ridb2021_no_dist_travel.rds")
+# usfs_ridb2020and2021 <- readRDS("dashboard/usfs_ridb2020and2021_no_dist_travel.rds")
 
 df_state_geometries_us <- readRDS("df_state_geometries_us.rds")
 
+# subset only 2020 and 2021 year
+usfs_ridb2020and2021 <- usfs_ridb2020and2021 %>% 
+  filter(year %in% c(2020, 2021))
+
 # Inyo National Forest subset
-inyo_usfs_ridb2021 <- usfs_ridb2021 %>% 
+inyo_usfs_ridb2021 <- usfs_ridb2020and2021 %>% 
   dplyr::filter(forestname == "Inyo National Forest")
 
+# acs race
+acs_race <- readRDS("race_acs_2017_2021.rds")
+# acs_race <- readRDS("dashboard/race_acs_2017_2021.rds")
+
 # rsconnect::configureApp("prototype-r5-dashboard", size="xlarge")
+
+# zip code w population
+zip_code_pop <- acs_race %>% 
+  select(zip_code, zip_code_population)
 ```
 
-# Maps {data-orientation=columns}
-
-## Sidebar {.sidebar}
+# Sidebar {.sidebar}
 
 ```{r}
 shiny::radioButtons("year", label = "Select a year:",
-                          choices = sort(unique(usfs_ridb2021$year)),
+                          choices = sort(unique(usfs_ridb2020and2021$year)),
                           selected = 2021,
                           inline = TRUE)
 ```
 
-
 ```{r}
 shiny::selectInput("forest", label = "Select a forest:",
-                   choices = sort(unique(usfs_ridb2021$forestname)),
+                   choices = sort(unique(usfs_ridb2020and2021$forestname)),
                    selected = "Inyo National Forest")
 ```
 
@@ -85,7 +93,7 @@ Add explanatory text here
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 
-Sit amet purus gravida quis blandit turpis cursus. Eget aliquet nibh praesent tristique magna sit. Consequat ac felis donec et odio pellentesque. Amet mauris commodo quis imperdiet massa tincidunt nunc pulvinar sapien. Aliquam nulla facilisi cras fermentum odio eu feugiat pretium. 
+# Scroll {data-orientation=columns}
 
 ## Column 1 {data-width=300}
 
@@ -95,7 +103,7 @@ Sit amet purus gravida quis blandit turpis cursus. Eget aliquet nibh praesent tr
 # mapview::mapview(r5_au_bounds)
 
 # create subset of park info
-park_sub_sf <- usfs_ridb2021 %>% 
+park_sub_sf <- usfs_ridb2020and2021 %>% 
   dplyr::group_by(year,
                   forestname,
                   park,
@@ -156,9 +164,89 @@ leaflet::renderLeaflet({
 ```
 
 
-## Column 2 {data-width=500}
+<!-- ## Column 2 {data-width=500}-->
 
-### Visits CA ZIP Codes
+### Visits by State {data-height=600}
+
+```{r}
+
+# zip code state info using `zipcodeR`
+zip_sub <- zipcodeR::zip_code_db %>% 
+  select(
+    zipcode,
+    state
+  )
+
+# joined customer state info
+state_zip_usfs_ridb <- left_join(usfs_ridb2020and2021, zip_sub, 
+                                 by = c("customerzip" = "zipcode")) %>% 
+  rename(customerstate = state) %>% 
+  relocate(customerstate, .before = totalpaid)
+
+# state geoms
+# df_state_geometries_us <- tigris::states() %>% # defaults to 2021 data
+#   select(STUSPS, geometry) %>%
+#   rename(state_abbrev = STUSPS) %>%
+#   rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+# 
+# saveRDS(df_state_geometries_us,
+#         "dashboard/df_state_geometries_us.rds")
+
+# summarize ridb data
+summary_state_zip_usfs_ridb <- state_zip_usfs_ridb %>%
+  group_by(year,
+           forestname,
+           customerstate) %>%
+  summarize(count = n())
+
+# join data
+map_data <- df_state_geometries_us %>% 
+  left_join(summary_state_zip_usfs_ridb,
+            by = c("state_abbrev" = "customerstate")) %>%
+  st_transform(crs = 4326)
+
+# reactive df
+reactive_map_data <- shiny::reactive({
+  map_data %>%
+    filter(year == input$year) %>%
+    filter(forestname == input$forest)
+})
+
+# map
+leaflet::renderLeaflet({
+  bins <- c(0, 10, 50, 100, 200, 500, 800, 1000, 2000, 5000, 150000)
+  pal <- colorBin("BrBG", domain = reactive_map_data()$count, bins = bins)
+  
+  leaflet() %>%
+    setView(lat = 49.850033,
+            lng = -125.6500523,
+            zoom = 3) %>%
+    addPolygons(
+      data = reactive_map_data(),
+      weight = 1,
+      opacity = 1,
+      fillColor = ~ pal(count),
+      fillOpacity = 0.7,
+      color = "white",
+      popup = paste0(
+        reactive_map_data()$state_abbrev,
+        "<br>",
+        "Total number of visits: ",
+        reactive_map_data()$count
+      )
+    ) %>%
+    addLegend(
+      "topright",
+      title = "Number of Visits",
+      pal = pal,
+      values = bins,
+      opacity = 1
+    ) %>%
+    addProviderTiles(providers$CartoDB.Voyager)
+})
+```
+
+### Visits by CA ZIP Codes {data-height=600}
 
 ```{r}
 # ca_zips <- tigris::zctas()
@@ -213,7 +301,10 @@ ca_zip_visits_map <- readRDS("ca_zip_visits_map.rds")
 
 # reactive df
 reactive_ca_zip_visits_map <- shiny::reactive({
+  
   ca_zip_visits_map %>%
+    sf::st_transform(crs = 4326) %>% 
+    left_join(zip_code_pop, by = c("zipcode" = "zip_code")) %>% 
     filter(year == input$year) %>% 
     filter(forestname == input$forest)
 })
@@ -224,15 +315,15 @@ leaflet::renderLeaflet({
                   bins = bins)
 
   leaflet() %>%
-    setView(lat = 36.9999,
+    setView(lat = 37.5000,
             lng = -119.4179,
-            zoom = 5) %>%
+            zoom = 6) %>%
     addPolygons(
       data = reactive_ca_zip_visits_map(),
       weight = 0.5,
       opacity = 1,
       fillColor = ~ pal(count),
-      fillOpacity = 0.7,
+      fillOpacity = 0.8,
       color = "black",
       popup = paste0(
         reactive_ca_zip_visits_map()$zipcode,
@@ -242,7 +333,10 @@ leaflet::renderLeaflet({
         reactive_ca_zip_visits_map()$county,
         "<br>",
         "Total number of visits: ",
-        reactive_ca_zip_visits_map()$count
+        reactive_ca_zip_visits_map()$count,
+        "<br>",
+        "ZIP code population: ",
+        reactive_ca_zip_visits_map()$zip_code_population
       )
     ) %>%
     addLegend(
@@ -256,7 +350,234 @@ leaflet::renderLeaflet({
 })
 ```
 
-### Visits by State 
+### Demographics of Visits by CA ZIP Codes
+
+```{r}
+# data
+sub_ridb_race <- usfs_ridb2020and2021 %>% 
+  group_by(year,
+           forestname,
+           customerzip) %>%
+  summarize(tot_visits = n()) %>%
+  ungroup()
+
+acs_race_calc <- acs_race %>% 
+  summarize(
+    white = weighted.mean(white, zip_code_population,
+                          na.rm = TRUE),
+    black = weighted.mean(black,  zip_code_population,
+                          na.rm = TRUE),
+    asian = weighted.mean(asian, zip_code_population,
+                          na.rm = TRUE),
+    multiracial = weighted.mean(multiracial, zip_code_population,
+                                na.rm = TRUE),
+    other = weighted.mean(other, zip_code_population,
+                          na.rm = TRUE),
+    native_american = weighted.mean(native_american, zip_code_population,
+                                    na.rm = TRUE),
+    pacific_islander = weighted.mean(pacific_islander, zip_code_population,
+                                     na.rm = TRUE),
+    hispanic_latinx = weighted.mean(hispanic_latinx, zip_code_population,
+                                    na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percent_average") %>%
+  mutate(race = str_replace(
+    string = race,
+    pattern = "_",
+    replacement = " "
+  ),
+  race = str_to_title(race))
+
+# acs_race_pivot <- acs_race %>% 
+#   pivot_longer(cols = 3:10,
+#                names_to = "race",
+#                values_to = "race_percentage") %>% 
+#   # lose 40 CA zip codes bc race data is NA
+#   filter(is.na(race_percentage) == FALSE)
+
+# weighted median value (weighted based on ZIP code populations)
+# weighted_half <- weighted.mean(x = acs_race_pivot$race_percentage, 
+#                                w = acs_race_pivot$zip_code_population)
+# 
+# acs_race_pivot_half <- acs_race_pivot %>% filter(race_percentage >= weighted_half)
+  
+
+joined_ridb_race <- left_join(sub_ridb_race, acs_race_calc,
+                              by = c("customerzip" = "zip_code"))
+
+zip_code_ca <- zipcodeR::zip_code_db %>% 
+  select(zipcode,
+         state,
+         major_city,
+         county) %>% 
+  filter(state == "CA") %>% 
+  select(!state)
+
+clean_join_ridb_race <- joined_ridb_race %>% 
+  # rm non-CA zips
+  filter(is.na(race) == FALSE) %>% 
+  left_join(zip_code_ca,
+            by = c("customerzip" = "zipcode")) %>% 
+  relocate(major_city, .after = customerzip) %>% 
+  relocate(county, .after = major_city)
+
+most_visited_sub <- clean_join_ridb_race %>% 
+  filter(tot_visits > 6) %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  sample_n(size = 10)
+
+most_visited_vec <- as.vector(most_visited_sub$customerzip)
+
+least_visited_sub <- clean_join_ridb_race %>% 
+  filter(tot_visits <= 6) %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  sample_n(size = 10)
+
+least_visited_vec <- as.vector(least_visited_sub$customerzip)
+
+# median tot vists = 6 (whereas mean = 23, so median is a better indicator of the middle since the data is skewed)
+most_visited_ribd_race <- clean_join_ridb_race %>%
+  filter(tot_visits > 6) %>%
+  filter(forestname == "Inyo National Forest") %>%
+  filter(customerzip %in% most_visited_vec) %>% 
+  group_by(race) %>% 
+  summarize(mean = mean(race_percent_average)) %>% 
+  mutate(visit_freq = "high visits")
+
+least_visited_ribd_race <- clean_join_ridb_race %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  filter(tot_visits <= 6) %>% 
+  filter(customerzip %in% least_visited_vec) %>% 
+  group_by(race) %>% 
+  summarize(mean = mean(race_percent_average)) %>% 
+  mutate(visit_freq = "low visits")
+
+visited_ridb_race <- rbind(most_visited_ribd_race, least_visited_ribd_race)
+```
+
+```{r}
+# plot
+ggplot(visited_ridb_race) +
+  geom_col(aes(x = mean,
+               reorder(race, desc(race)),
+               fill = visit_freq),
+           position = "dodge")
+```
+
+
+
+<!-- # Visitor Data {data-orientation=rows}
+
+## Row 1
+
+### Visitor Data 
+
+```{r}
+# table_data <- summary_state_zip_usfs_ridb %>% 
+#   select(year,
+#         forestname,
+#         park,
+#         sitetype,
+#         numberofpeople,
+#         lengthofstay,
+#         bookingwindow,
+#         dailycost,
+#         dailycostpervisitor) %>% 
+#   filter(year == "2021") %>% 
+#   filter(forestname == "Inyo National Forest") %>%
+#   group_by(park) %>% 
+#   summarize(
+#     mean_numofppl = round(mean(numberofpeople), 0),
+#     mean_lengthofstay = round(mean(lengthofstay), 1),
+#     mean_bookingwindow = round(mean(bookingwindow), 1),
+#     mean_dailycost = round(mean(dailycost), 2),
+#     mean_dailycostpervisitor = round(mean(dailycostpervisitor), 2)
+#   )
+# 
+# DT::datatable(table_data)
+```
+
+-->
+
+# Storyboard {.storyboard}
+
+### R5 Map
+
+```{r}
+# mapview::mapview(r5_au_bounds)
+
+# create subset of park info
+park_sub_sf <- usfs_ridb2020and2021 %>% 
+  dplyr::group_by(year,
+                  forestname,
+                  park,
+                  sitetype,
+                  facilityzip,
+                  facilitylongitude,
+                  facilitylatitude) %>%
+  dplyr::summarize(n = n()) %>%
+  # filter(is.na(sitetype) == TRUE) NOTEHD: Need to decide site types for NA sitetypes (e.g. xmas tree permits)
+  dplyr::select(!n) %>%
+  # create as sf object with 4326 crs
+  st_as_sf(
+    coords = c("facilitylongitude", "facilitylatitude"),
+    crs = 4326,
+    remove = FALSE
+  )
+
+# transform to 4326 crs
+r5_bounds <- r5_au_bounds %>% sf::st_as_sf(crs = 4326)
+
+reactive_r5_bounds <- shiny::reactive({
+  r5_bounds %>%
+    filter(forestname == input$forest)
+})
+
+reactive_park <- shiny::reactive({
+  park_sub_sf %>% 
+    filter(year == input$year) %>% 
+    filter(forestname == input$forest)
+})
+
+leaflet::renderLeaflet({
+  
+  camping_icon <- makeIcon(
+    "camping_location_icon.png",
+    # here("images/camping_location_icon.png"), NOTEHD: run locally?
+    iconWidth = 25,
+    iconHeight = 25
+  )
+  
+p <- leaflet() %>%
+    addPolygons(
+      data = reactive_r5_bounds(),
+      weight = 1,
+      popup = paste0(reactive_r5_bounds()$forestname)
+    ) %>%
+    addMarkers(
+      lng = reactive_park()$facilitylongitude,
+      lat = reactive_park()$facilitylatitude,
+      popup = paste0(reactive_park()$park,
+                     "<br>",
+                     "Type of site: ",
+                     reactive_park()$sitetype),
+      icon = camping_icon
+    ) %>% 
+    addProviderTiles(providers$CartoDB.Voyager)
+
+p
+})
+```
+
+***
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.
+
+### Visits by State
 
 ```{r}
 
@@ -268,8 +589,8 @@ zip_sub <- zipcodeR::zip_code_db %>%
   )
 
 # joined customer state info
-state_zip_usfs_ridb2021 <- left_join(usfs_ridb2021, zip_sub, 
-                                     by = c("customerzip" = "zipcode")) %>% 
+state_zip_usfs_ridb <- left_join(usfs_ridb2020and2021, zip_sub, 
+                                 by = c("customerzip" = "zipcode")) %>% 
   rename(customerstate = state) %>% 
   relocate(customerstate, .before = totalpaid)
 
@@ -282,16 +603,16 @@ state_zip_usfs_ridb2021 <- left_join(usfs_ridb2021, zip_sub,
 # saveRDS(df_state_geometries_us,
 #         "dashboard/df_state_geometries_us.rds")
 
-# summarize ridb2021 data
-summary_state_zip_usfs_ridb2021 <- state_zip_usfs_ridb2021 %>% 
+# summarize ridb data
+summary_state_zip_usfs_ridb <- state_zip_usfs_ridb %>%
   group_by(year,
            forestname,
-           customerstate) %>% 
+           customerstate) %>%
   summarize(count = n())
 
 # join data
 map_data <- df_state_geometries_us %>% 
-  left_join(summary_state_zip_usfs_ridb2021,
+  left_join(summary_state_zip_usfs_ridb,
             by = c("state_abbrev" = "customerstate")) %>%
   st_transform(crs = 4326)
 
@@ -309,8 +630,8 @@ leaflet::renderLeaflet({
   
   leaflet() %>%
     setView(lat = 49.850033,
-            lng = -100.6500523,
-            zoom = 2) %>%
+            lng = -125.6500523,
+            zoom = 3) %>%
     addPolygons(
       data = reactive_map_data(),
       weight = 1,
@@ -336,35 +657,256 @@ leaflet::renderLeaflet({
 })
 ```
 
+***
 
-# Visitor Data {data-orientation=rows}
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 
-## Row 1
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.
 
-### Visitor Data
+### Visits by CA ZIP Codes
 
 ```{r}
-table_data <- usfs_ridb2021 %>% 
-  select(year,
-        forestname,
-        park,
-        sitetype,
-        numberofpeople,
-        lengthofstay,
-        bookingwindow,
-        dailycost,
-        dailycostpervisitor) %>% 
-  filter(year == "2021") %>% 
-  filter(forestname == "Inyo National Forest") %>%
-  group_by(park) %>% 
-  summarize(
-    mean_numofppl = round(mean(numberofpeople), 0),
-    mean_lengthofstay = round(mean(lengthofstay), 1),
-    mean_bookingwindow = round(mean(bookingwindow), 1),
-    mean_dailycost = round(mean(dailycost), 2),
-    mean_dailycostpervisitor = round(mean(dailycostpervisitor), 2)
-  )
+# ca_zips <- tigris::zctas()
+# 
+# # 1,763 zips in CA according to ACS
+# zip_ca <- zipcodeR::zip_code_db %>% 
+#   filter(state == "CA") %>% 
+#   filter(zipcode_type == "Standard") %>% 
+#   select(zipcode,
+#          major_city,
+#          county)
+# 
+# joined_zips <- left_join(zip_ca, ca_zips, by = c("zipcode" = "ZCTA5CE20")) 
+# 
+# # 38 zips NA meaning no geoms
+# # test_zips <- joined_zips %>% 
+# #   filter(is.na(GEOID20) == TRUE)
+# 
+# clean_ca_zips <- joined_zips %>% 
+#   filter(is.na(GEOID20) == FALSE) %>% 
+#   select(zipcode,
+#          major_city,
+#          county,
+#          geometry) %>% 
+#   st_as_sf() %>% 
+#   st_transform(4326) %>% 
+#   rmapshaper::ms_simplify(keep = 0.005, keep_shapes = TRUE)
+# 
+# # mapview::mapview(clean_ca_zips)
+# 
+# ridb_zip_visits <- usfs_ridb2021 %>% 
+#   select(year,
+#          forestname,
+#          customerzip)
+# 
+# ca_zip_visits_map <- left_join(clean_ca_zips, ridb_zip_visits,
+#                                by = c("zipcode" = "customerzip"))
+# # count num of visits by zip code
+# ca_zip_visits_map <- ca_zip_visits_map %>% 
+#   group_by(year,
+#            forestname,
+#            zipcode,
+#            major_city,
+#            county) %>% 
+#   summarize(count = n())
+# 
+# saveRDS(ca_zip_visits_map, "dashboard/ca_zip_visits_map.rds")
 
-DT::datatable(table_data)
+ca_zip_visits_map <- readRDS("ca_zip_visits_map.rds")
+# NOTEHD: run in rmd
+# ca_zip_visits_map <- readRDS("dashboard/ca_zip_visits_map.rds")
+
+ca_zip_visits_map <- ca_zip_visits_map %>% sf::st_transform(crs = 4326)
+
+# reactive df
+reactive_ca_zip_visits_map <- shiny::reactive({
+  ca_zip_visits_map %>%
+    filter(year == input$year) %>% 
+    filter(forestname == input$forest)
+})
+
+leaflet::renderLeaflet({
+  bins <- c(0, 5, 10, 50, 80, 100, 800, 1000, 3000)
+  pal <- colorBin("BrBG", domain = reactive_ca_zip_visits_map()$count, 
+                  bins = bins)
+
+  leaflet() %>%
+    setView(lat = 36.9999,
+            lng = -119.4179,
+            zoom = 6) %>%
+    addPolygons(
+      data = reactive_ca_zip_visits_map(),
+      weight = 0.5,
+      opacity = 1,
+      fillColor = ~ pal(count),
+      fillOpacity = 0.8,
+      color = "black",
+      popup = paste0(
+        reactive_ca_zip_visits_map()$zipcode,
+        "<br>",
+        reactive_ca_zip_visits_map()$major_city,
+        "<br>",
+        reactive_ca_zip_visits_map()$county,
+        "<br>",
+        "Total number of visits: ",
+        reactive_ca_zip_visits_map()$count
+      )
+    ) %>%
+    addLegend(
+      "topright",
+      title = "Number of Visits",
+      pal = pal,
+      values = bins,
+      opacity = 1
+    ) %>%
+    addProviderTiles(providers$CartoDB.Voyager)
+})
 ```
 
+***
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.
+
+### Demographics of Visits by CA ZIP Codes
+
+```{r}
+# data
+sub_ridb_race <- usfs_ridb2020and2021 %>% 
+  group_by(year,
+           forestname,
+           customerzip) %>%
+  summarize(tot_visits = n()) %>%
+  ungroup()
+
+acs_race_calc <- acs_race %>% 
+  summarize(
+    white = weighted.mean(white, zip_code_population,
+                          na.rm = TRUE),
+    black = weighted.mean(black,  zip_code_population,
+                          na.rm = TRUE),
+    asian = weighted.mean(asian, zip_code_population,
+                          na.rm = TRUE),
+    multiracial = weighted.mean(multiracial, zip_code_population,
+                                na.rm = TRUE),
+    other = weighted.mean(other, zip_code_population,
+                          na.rm = TRUE),
+    native_american = weighted.mean(native_american, zip_code_population,
+                                    na.rm = TRUE),
+    pacific_islander = weighted.mean(pacific_islander, zip_code_population,
+                                     na.rm = TRUE),
+    hispanic_latinx = weighted.mean(hispanic_latinx, zip_code_population,
+                                    na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percent_average") %>%
+  mutate(race = str_replace(
+    string = race,
+    pattern = "_",
+    replacement = " "
+  ),
+  race = str_to_title(race))
+
+# acs_race_pivot <- acs_race %>% 
+#   pivot_longer(cols = 3:10,
+#                names_to = "race",
+#                values_to = "race_percentage") %>% 
+#   # lose 40 CA zip codes bc race data is NA
+#   filter(is.na(race_percentage) == FALSE)
+
+# weighted median value (weighted based on ZIP code populations)
+# weighted_half <- weighted.mean(x = acs_race_pivot$race_percentage, 
+#                                w = acs_race_pivot$zip_code_population)
+# 
+# acs_race_pivot_half <- acs_race_pivot %>% filter(race_percentage >= weighted_half)
+  
+
+joined_ridb_race <- left_join(sub_ridb_race, acs_race_calc,
+                              by = c("customerzip" = "zip_code"))
+
+zip_code_ca <- zipcodeR::zip_code_db %>% 
+  select(zipcode,
+         state,
+         major_city,
+         county) %>% 
+  filter(state == "CA") %>% 
+  select(!state)
+
+clean_join_ridb_race <- joined_ridb_race %>% 
+  # rm non-CA zips
+  filter(is.na(race) == FALSE) %>% 
+  left_join(zip_code_ca,
+            by = c("customerzip" = "zipcode")) %>% 
+  relocate(major_city, .after = customerzip) %>% 
+  relocate(county, .after = major_city)
+
+most_visited_sub <- clean_join_ridb_race %>% 
+  filter(tot_visits > 6) %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  sample_n(size = 10)
+
+most_visited_vec <- as.vector(most_visited_sub$customerzip)
+
+least_visited_sub <- clean_join_ridb_race %>% 
+  filter(tot_visits <= 6) %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  sample_n(size = 10)
+
+least_visited_vec <- as.vector(least_visited_sub$customerzip)
+
+# median tot vists = 6 (whereas mean = 23, so median is a better indicator of the middle since the data is skewed)
+most_visited_ribd_race <- clean_join_ridb_race %>%
+  filter(tot_visits > 6) %>%
+  filter(forestname == "Inyo National Forest") %>%
+  filter(customerzip %in% most_visited_vec) %>% 
+  group_by(race) %>% 
+  summarize(mean = mean(race_percent_average)) %>% 
+  mutate(visit_freq = "high visits")
+
+least_visited_ribd_race <- clean_join_ridb_race %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  filter(tot_visits <= 6) %>% 
+  filter(customerzip %in% least_visited_vec) %>% 
+  group_by(race) %>% 
+  summarize(mean = mean(race_percent_average)) %>% 
+  mutate(visit_freq = "low visits")
+
+visited_ridb_race <- rbind(most_visited_ribd_race, least_visited_ribd_race)
+```
+
+```{r}
+# plot
+ggplot(visited_ridb_race) +
+  geom_col(aes(x = mean,
+               reorder(race, desc(race)),
+               fill = visit_freq),
+           position = "dodge")
+```
+
+***
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla.
+
+
+<style>
+
+.storyboard-nav .sbframelist {
+    margin: 0 auto;
+    width: 94%;
+    height: 65px;
+    overflow: hidden;
+    text-shadow: none;
+    margin-bottom: 8px;
+}
+
+.storyboard-nav .sbnext, .storyboard-nav .sbprev {
+    float: left;
+    width: 2%;
+    height: 65px;
+    font-size: 50px;
+}
+
+</style>
