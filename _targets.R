@@ -96,7 +96,16 @@ list(
     name = process_sitetype,
     command = clean_sitetype(sitetype_df = sitetype_df,
                              calc_vars_df = create_vars)
+  ),
+  tar_target(
+    name = create_dist_travel,
+    command = calc_dist_travel(dist_travel_df = dist_travel_df,
+                               sitetype_df = process_sitetype)
+  ),
+  tar_target(
+    name = create_us_states_df,
+    command = us_states_df(fips_vec = fips_vec,
+                           state_abbre_vec = state_abbre_vec,
+                           state_full_names_vec = state_full_names_vec)
   )
-  
-  
 )

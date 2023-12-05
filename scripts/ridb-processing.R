@@ -20,8 +20,8 @@ library(tidyverse)
 library(janitor)
 library(zipcodeR)
 library(tidycensus)
-library(ggmap) # citation("ggmap")
-library(lubridate)
+# library(ggmap) # citation("ggmap")
+# library(lubridate)
 
 # 1. get_ridb_data() ----
 get_ridb_data <- function(fp, file, df_name, raw_df) {
@@ -875,38 +875,57 @@ clean_sitetype <- function(sitetype_df, calc_vars_df){
   return(sitetype_df)
 }
 
-# add state for each ZIP code ----
-# create df of fips and full state names
-# NOTEHD: df_states_fips is from outdoor equity code
-# create only if we need fips and state full names
-fips_vec <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
-              "13", "15", "16", "17", "18", "19", "20", "21", "22", "23",
-              "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
-              "34", "35", "36", "37", "38", "39", "40", "41", "42", "44",
-              "45", "46", "47", "48", "49", "50", "51", "53", "54", "55",
-              "56", "72")
+# 9. calc_dist_travel() ----
+calc_dist_travel <- function(sitetype_df, dist_travel_df){
+  
+  dist_travel_df <- sitetype_df %>%
+    # zipcodeR::zip_distance creates a df
+    mutate(dist_travel_mi = zipcodeR::zip_distance(customerzip,
+                                                   facilityzip)) %>% 
+    # expand dist_travel_mi
+    unnest(cols = c(dist_travel_mi)) %>%
+    select(-zipcode_a,
+           -zipcode_b) %>% 
+    rename(dist_travel_mi = distance)
+  
+  return(dist_travel_df)
+}
 
-state_vec <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
-               "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
-               "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
-               "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
-               "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
-               "WY", "PR")
+# 10. us_states_df() ----
+# NOTEHD: variables in df: state FIPS codes, abbreviations, and full names
+us_states_df <- function(){
 
-states_full_names_vec <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", 
-                           "Colorado", "Connecticut", "Delaware", "District of Columbia",
-                           "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana",
-                           "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
-                           "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
-                           "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-                           "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
-                           "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
-                           "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
-                           "Washington", "West Virginia", "Wisconsin", "Wyoming", "Puerto Rico")
-
-df_states_fips <- as.data.frame(list(fips = fips_vec,
-                                     state = state_vec,
-                                     state_full = states_full_names_vec))
+  fips_vec <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
+                "13", "15", "16", "17", "18", "19", "20", "21", "22", "23",
+                "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
+                "34", "35", "36", "37", "38", "39", "40", "41", "42", "44",
+                "45", "46", "47", "48", "49", "50", "51", "53", "54", "55",
+                "56", "72")
+  
+  state_abbre_vec <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
+                       "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
+                       "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
+                       "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+                       "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
+                       "WY", "PR")
+  
+  state_full_names_vec <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", 
+                            "Colorado", "Connecticut", "Delaware", "District of Columbia",
+                            "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana",
+                            "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
+                            "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
+                            "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+                            "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+                            "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+                            "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
+                            "Washington", "West Virginia", "Wisconsin", "Wyoming", "Puerto Rico")
+  
+  df_us_states <- as.data.frame(list(fips = fips_vec,
+                                     state = state_abbre_vec,
+                                     state_full = state_full_names_vec))
+  
+  return(df_us_states)
+}
 
 zipcode_db <- zipcodeR::zip_code_db %>% 
   select(zipcode,
@@ -925,23 +944,6 @@ zipcode_db <- zipcodeR::zip_code_db %>%
 # df with customer state info
 usfs_ridb <- usfs_ridb %>%
   left_join(zipcode_db, by = c("customerzip" = "zipcode"), multiple = "all")
-
-# move columns + add FY col
-# NOTEHD: rerun for each year, change year as needed
-usfs_ridb2020 <- usfs_ridb %>% 
-  relocate(fips, .after = customerzip) %>% 
-  relocate(state, .after = fips) %>% 
-  relocate(state_full, .after = state) %>% 
-  mutate(fy = as.factor(2020)) %>% 
-  relocate(fy, .before = historicalreservationid)
-  
-# calculate distance traveled ----
-# see ridb-dist-traveled.R script
-
-usfs_ridb2018_dist <- zipcodeR::zip_distance(usfs_ridb2018$facilityzip, usfs_ridb2018$customerzip) %>% 
-  rename(facilityzip = zipcode_a) %>% 
-  rename(customerzip = zipcode_b) %>% 
-  rename(distance_mi = distance)
 
 # combine data ----
 # 2018 processed (300,809 obs)
@@ -967,6 +969,7 @@ usfs_ridb2018 <- clean_park(forestname_df = usfs_ridb2018)
 usfs_ridb2018 <- clean_facility_location(park_df = usfs_ridb2018)
 usfs_ridb2018 <- calc_vars(facility_location_df = usfs_ridb2018)
 usfs_ridb2018 <- clean_sitetype(calc_vars_df = usfs_ridb2018)
+usfs_ridb2018 <- calc_dist_travel(sitetype_df = usfs_ridb2018)
 
 # 2019 #
 usfs_ridb2019 <- subset_ridb(raw_df = usfs_ridb_test2019)
@@ -977,6 +980,7 @@ usfs_ridb2019 <- clean_park(forestname_df = usfs_ridb2019)
 usfs_ridb2019 <- clean_facility_location(park_df = usfs_ridb2019)
 usfs_ridb2019 <- calc_vars(facility_location_df = usfs_ridb2019)
 usfs_ridb2019 <- clean_sitetype(calc_vars_df = usfs_ridb2019)
+usfs_ridb2019 <- calc_dist_travel(sitetype_df = usfs_ridb2019)
 
 # 2020 #
 usfs_ridb2020 <- subset_ridb(raw_df = usfs_ridb_test2020)
@@ -987,6 +991,7 @@ usfs_ridb2020 <- clean_park(forestname_df = usfs_ridb2020)
 usfs_ridb2020 <- clean_facility_location(park_df = usfs_ridb2020)
 usfs_ridb2020 <- calc_vars(facility_location_df = usfs_ridb2020)
 usfs_ridb2020 <- clean_sitetype(calc_vars_df = usfs_ridb2020)
+usfs_ridb2020 <- calc_dist_travel(sitetype_df = usfs_ridb2020)
 
 # 2021 #
 usfs_ridb2021 <- subset_ridb(raw_df = usfs_ridb_test2021)
@@ -997,6 +1002,7 @@ usfs_ridb2021 <- clean_park(forestname_df = usfs_ridb2021)
 usfs_ridb2021 <- clean_facility_location(park_df = usfs_ridb2021)
 usfs_ridb2021 <- calc_vars(facility_location_df = usfs_ridb2021)
 usfs_ridb2021 <- clean_sitetype(calc_vars_df = usfs_ridb2021)
+usfs_ridb2021 <- calc_dist_travel(sitetype_df = usfs_ridb2021)
 
 usfs_ridb2020and2021 <- rbind(usfs_ridb2020, usfs_ridb2021)
 
@@ -1029,26 +1035,4 @@ write_rds(usfs_ridb2020and2021, here("data/ridb/clean/usfs_ridb2020and2021_no_di
 #                    false = park,
 #                    missing = park),
 #   )
-
-# 1,788,339
-all_ridb <- rbind(ridb2018, # 296,725
-                  ridb2019, # 363,244
-                  ridb2020, # 520,590
-                  ridb2021) # 607,780
-
-all_ridb_2019up <- rbind(ridb2019, # 363,244
-                         ridb2020, # 520,590
-                         ridb2021) # 607,780
-
-park_test <- all_ridb %>%
-  # filter(facilityzip == "93634") %>% 
-  group_by(forestname, park, facilityzip, facilitylongitude, facilitylatitude) %>%
-  summarize(count = n())
-
-write_csv(all_ridb_2019up,)
-
-usfs_ridb <- read_csv(here::here("data/ridb/clean/usfs_ridb_all.csv"))
-
-
-
 
