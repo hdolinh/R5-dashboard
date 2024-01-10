@@ -1,5 +1,4 @@
 ## TO DO ##
-# calculate distance traveled - do we want this as a sep table or part of the df?
 # turn into functions:
 ## add state names + zips (do we want county level data?)
 ## rbind dfs
@@ -8,10 +7,10 @@
 # test ridb targets
 
 # testing(setup) ----
-usfs_ridb_test2018 <- vroom(here("data/ridb/raw/reservations2018.csv"))
-usfs_ridb_test2019 <- vroom(here("data/ridb/raw/reservations2019.csv"))
-usfs_ridb_test2020 <- vroom(here("data/ridb/raw/FY20 Historical Reservations Full.csv"))
-usfs_ridb_test2021 <- vroom(here("data/ridb/raw/FY21 Historical Reservations Full.csv"))
+usfs_ridb_test2018 <- vroom::vroom(here::here("data/ridb/raw/reservations2018.csv"))
+usfs_ridb_test2019 <- vroom::vroom(here::here("data/ridb/raw/reservations2019.csv"))
+usfs_ridb_test2020 <- vroom::vroom(here::here("data/ridb/raw/FY20 Historical Reservations Full.csv"))
+usfs_ridb_test2021 <- vroom::vroom(here::here("data/ridb/raw/FY21 Historical Reservations Full.csv"))
 
 # setup ----
 library(vroom)
@@ -24,11 +23,11 @@ library(tidycensus)
 # library(lubridate)
 
 # 1. get_ridb_data() ----
-get_ridb_data <- function(fp, file, df_name, raw_df) {
+get_ridb_data <- function(fp, file, raw_df) {
   
   # df_name = ridbYYYY
-  df_name <- here::here(fp, file)
-  raw_df <- vroom::vroom(df_name)
+  df <- here::here(fp, file)
+  raw_df <- vroom::vroom(df)
   
   return(raw_df)
 }
@@ -880,86 +879,89 @@ calc_dist_travel <- function(sitetype_df, dist_travel_df){
   
   dist_travel_df <- sitetype_df %>%
     # zipcodeR::zip_distance creates a df
-    mutate(dist_travel_mi = zipcodeR::zip_distance(customerzip,
-                                                   facilityzip)) %>% 
+    dplyr::mutate(dist_travel_mi = zipcodeR::zip_distance(customerzip,
+                                                          facilityzip)) %>% 
     # expand dist_travel_mi
-    unnest(cols = c(dist_travel_mi)) %>%
-    select(-zipcode_a,
-           -zipcode_b) %>% 
-    rename(dist_travel_mi = distance)
+    tidyr::unnest(cols = c(dist_travel_mi)) %>%
+    dplyr::select(-zipcode_a,
+                  -zipcode_b) %>% 
+    dplyr::rename(dist_travel_mi = distance)
   
   return(dist_travel_df)
 }
 
-# 10. us_states_df() ----
-# NOTEHD: variables in df: state FIPS codes, abbreviations, and full names
-us_states_df <- function(){
+# 10. add_states() ----
+add_states <- function(dist_travel_df, us_states_df){
+  
+  location_df <- zipcodeR::zip_code_db %>%
+    dplyr::select(zipcode,
+                  state,
+                  county,
+                  major_city)
+  
+  us_states_df <- dist_travel_df %>% 
+    left_join(location_df, by = c("customerzip" = "zipcode")) %>%
+    rename(
+      customerstate = state,
+      customercounty = county,
+      customercity = major_city
+    ) %>%
+    relocate(customerstate, .after = customerzip) %>%
+    relocate(customercounty, .after = customerstate) %>%
+    relocate(customercity, .after = customercounty)
 
-  fips_vec <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
-                "13", "15", "16", "17", "18", "19", "20", "21", "22", "23",
-                "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
-                "34", "35", "36", "37", "38", "39", "40", "41", "42", "44",
-                "45", "46", "47", "48", "49", "50", "51", "53", "54", "55",
-                "56", "72")
   
-  state_abbre_vec <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
-                       "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
-                       "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
-                       "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
-                       "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
-                       "WY", "PR")
-  
-  state_full_names_vec <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", 
-                            "Colorado", "Connecticut", "Delaware", "District of Columbia",
-                            "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana",
-                            "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
-                            "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
-                            "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-                            "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
-                            "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
-                            "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
-                            "Washington", "West Virginia", "Wisconsin", "Wyoming", "Puerto Rico")
-  
-  df_us_states <- as.data.frame(list(fips = fips_vec,
-                                     state = state_abbre_vec,
-                                     state_full = state_full_names_vec))
-  
-  return(df_us_states)
+  return(us_states_df)
 }
 
-zipcode_db <- zipcodeR::zip_code_db %>% 
-  select(zipcode,
-         state,
-         county
-         # major_city,
-         # lat,
-         # lng
-         ) %>% 
-  left_join(df_states_fips, by = "state") %>% 
-  relocate(fips, .before = state) %>% 
-  relocate(state_full, .after = state) #%>% 
-  # rename(customerlng = lng) %>% 
-  # rename(customerlat = lat)
+# ADD NUM combine data ----
 
-# df with customer state info
-usfs_ridb <- usfs_ridb %>%
-  left_join(zipcode_db, by = c("customerzip" = "zipcode"), multiple = "all")
+combine_ridb <- function(df){
+  
+  df_list <- c(usfs_ridb2018, usfs_ridb2019, usfs_ridb2020, usfs_ridb2021)
+  
+  for (i in df_list) {
+    
+    all_ridb_df <- rbind(df_list[i])
+    
+    return()
+  }
+  
+}
 
-# combine data ----
-# 2018 processed (300,809 obs)
-# 2019 processed (228,956 obs)
-# 2020 processed (387,564 obs)
-# 2021 processed (469,376 obs)
-# grand total 1,386,705 obs
 usfs_ridb_all <- usfs_ridb2018 %>%
   rbind(usfs_ridb2019,
         usfs_ridb2020,
         usfs_ridb2021)
 
-# save data ----
-write_csv(usfs_ridb_all, here("data/ridb/clean/usfs_ridb_all.csv"))
+# ADD NUM save data ----
+save_data <- function(all_ridb_df){
+  
+  write_csv(all_ridb_df, here("data/ridb/clean/usfs_ridb_all.rds"))
+}
 
 # testing(functions) ----
+ridb_raw_df <- c(usfs_ridb_test2018)
+
+ridb_all <- 
+
+for (i in seq_along(ridb_raw_df)){
+  
+  ridb_raw_df[i]
+  
+  usfs_ridb2018 <- subset_ridb(raw_df = usfs_ridb_test2018)
+  usfs_ridb2018 <- clean_customer_zips(subset_df = usfs_ridb2018)
+  usfs_ridb2018 <- clean_forestname(customer_zips_df = usfs_ridb2018,
+                                    forestname_vec = forestname_vec)
+  usfs_ridb2018 <- clean_park(forestname_df = usfs_ridb2018)
+  usfs_ridb2018 <- clean_facility_location(park_df = usfs_ridb2018)
+  usfs_ridb2018 <- calc_vars(facility_location_df = usfs_ridb2018)
+  usfs_ridb2018 <- clean_sitetype(calc_vars_df = usfs_ridb2018)
+  usfs_ridb2018 <- calc_dist_travel(sitetype_df = usfs_ridb2018)
+  usfs_ridb2018 <- add_states(dist_travel_df = usfs_ridb2018)
+}
+
+
 # 2018 #
 usfs_ridb2018 <- subset_ridb(raw_df = usfs_ridb_test2018)
 usfs_ridb2018 <- clean_customer_zips(subset_df = usfs_ridb2018)
@@ -970,6 +972,7 @@ usfs_ridb2018 <- clean_facility_location(park_df = usfs_ridb2018)
 usfs_ridb2018 <- calc_vars(facility_location_df = usfs_ridb2018)
 usfs_ridb2018 <- clean_sitetype(calc_vars_df = usfs_ridb2018)
 usfs_ridb2018 <- calc_dist_travel(sitetype_df = usfs_ridb2018)
+usfs_ridb2018 <- add_states(dist_travel_df = usfs_ridb2018)
 
 # 2019 #
 usfs_ridb2019 <- subset_ridb(raw_df = usfs_ridb_test2019)
@@ -981,6 +984,7 @@ usfs_ridb2019 <- clean_facility_location(park_df = usfs_ridb2019)
 usfs_ridb2019 <- calc_vars(facility_location_df = usfs_ridb2019)
 usfs_ridb2019 <- clean_sitetype(calc_vars_df = usfs_ridb2019)
 usfs_ridb2019 <- calc_dist_travel(sitetype_df = usfs_ridb2019)
+usfs_ridb2019 <- add_states(dist_travel_df = usfs_ridb2019)
 
 # 2020 #
 usfs_ridb2020 <- subset_ridb(raw_df = usfs_ridb_test2020)
@@ -992,6 +996,7 @@ usfs_ridb2020 <- clean_facility_location(park_df = usfs_ridb2020)
 usfs_ridb2020 <- calc_vars(facility_location_df = usfs_ridb2020)
 usfs_ridb2020 <- clean_sitetype(calc_vars_df = usfs_ridb2020)
 usfs_ridb2020 <- calc_dist_travel(sitetype_df = usfs_ridb2020)
+usfs_ridb2020 <- add_states(dist_travel_df = usfs_ridb2020)
 
 # 2021 #
 usfs_ridb2021 <- subset_ridb(raw_df = usfs_ridb_test2021)
@@ -1003,10 +1008,11 @@ usfs_ridb2021 <- clean_facility_location(park_df = usfs_ridb2021)
 usfs_ridb2021 <- calc_vars(facility_location_df = usfs_ridb2021)
 usfs_ridb2021 <- clean_sitetype(calc_vars_df = usfs_ridb2021)
 usfs_ridb2021 <- calc_dist_travel(sitetype_df = usfs_ridb2021)
+usfs_ridb2021 <- add_states(dist_travel_df = usfs_ridb2021)
 
 usfs_ridb2020and2021 <- rbind(usfs_ridb2020, usfs_ridb2021)
 
-write_rds(usfs_ridb2020and2021, here("data/ridb/clean/usfs_ridb2020and2021_no_dist_travel.rds"))
+write_rds(usfs_ridb2020and2021, here("data/ridb/clean/usfs_ridb2020and2021.rds"))
 
 
 # notes ----
@@ -1035,4 +1041,35 @@ write_rds(usfs_ridb2020and2021, here("data/ridb/clean/usfs_ridb2020and2021_no_di
 #                    false = park,
 #                    missing = park),
 #   )
+
+# if we want to add full state names+ FIPS codes
+# NOTEHD: variables in df: state FIPS codes, abbreviations, and full names
+# fips_vec <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", 
+#               "13", "15", "16", "17", "18", "19", "20", "21", "22", "23",
+#               "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
+#               "34", "35", "36", "37", "38", "39", "40", "41", "42", "44",
+#               "45", "46", "47", "48", "49", "50", "51", "53", "54", "55",
+#               "56", "72")
+# 
+# state_abbre_vec <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL",
+#                      "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME",
+#                      "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH",
+#                      "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+#                      "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI",
+#                      "WY", "PR")
+# 
+# state_full_names_vec <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", 
+#                           "Colorado", "Connecticut", "Delaware", "District of Columbia",
+#                           "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana",
+#                           "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
+#                           "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri",
+#                           "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+#                           "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+#                           "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+#                           "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
+#                           "Washington", "West Virginia", "Wisconsin", "Wyoming", "Puerto Rico")
+# 
+# us_states_df <- as.data.frame(list(fips = fips_vec,
+#                                    state = state_abbre_vec,
+#                                    state_full = state_full_names_vec))
 
