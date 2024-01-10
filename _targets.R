@@ -56,8 +56,8 @@ list(
     name = file_ridb,
     command = get_ridb_data(fp = "data/ridb/raw/",
                             file = "reservations2018.csv",
-                            df_name = ridb,
-                            raw_df = raw_ridb)
+                            raw_df = raw_ridb,
+                            format = "file")
   ),
   tar_target(
     name = get_r5_ridb,
@@ -103,9 +103,9 @@ list(
                                sitetype_df = process_sitetype)
   ),
   tar_target(
-    name = create_us_states_df,
-    command = us_states_df(fips_vec = fips_vec,
-                           state_abbre_vec = state_abbre_vec,
-                           state_full_names_vec = state_full_names_vec)
+    name = add_customer_location,
+    command = add_states(us_states_df = us_states_df,
+                         dist_travel_df = create_dist_travel)
   )
+  
 )
