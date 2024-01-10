@@ -3,11 +3,22 @@
 # df = data frame
 # vec = vector
 
+# testing ----
+# library(tidyr) # load to use ` %>% `
+# spatial_data <- here::here("data/spatial/raw/S_USA.AdministrativeForest/")
+# spatial_clean <- sf::read_sf(spatial_data) %>%
+#   janitor::clean_names() %>%
+#   dplyr::filter(region == "05")
+# 
+# forestname_vec <- as.vector(unique(spatial_clean$forestname))
+# 
+# mapview::mapview(spatial_clean)
+
 # 1. get_spatial_data() ----
-get_spatial_data <- function(fp, df_name, raw_df){
+get_spatial_data <- function(fp, raw_df){
   
-  df_name <- here::here(fp)
-  raw_df <- sf::read_sf(df_name) %>% janitor::clean_names()
+  df <- here::here(fp)
+  raw_df <- sf::read_sf(df) %>% janitor::clean_names()
   
   return(raw_df)
 }
