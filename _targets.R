@@ -30,7 +30,6 @@ list(
     ## --- spatial data: R5 boundaries --- ##
     name = file_spatial,
     command = get_spatial_data(fp = "data/spatial/raw/S_USA.AdministrativeForest/",
-                               df_name = usfs_regions,
                                raw_df = raw_usfs_regions,
                                format = "file")
   ),
