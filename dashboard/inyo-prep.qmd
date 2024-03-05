@@ -1,0 +1,1109 @@
+---
+title: "Inyo Prototype Presentation Data + Visuals"
+format: html
+---
+
+```{r}
+#| label: libraries
+library(tidyr)
+library(dplyr)
+library(sf)
+library(leaflet)
+library(here)
+library(scales)
+library(ggplot2)
+library(DT)
+library(tidycensus)
+library(plotly)
+library(zipcodeR)
+library(janitor)
+library(stringr)
+```
+
+
+```{r}
+#| label: read in data
+#| echo: false
+
+# spatial
+r5_spatial <- read_sf("data/spatial/clean/")
+inyo_sf <- r5_spatial %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  st_transform('+proj=longlat +datum=WGS84')
+
+# ridb
+ridb_df <- readRDS("data/ridb/clean/usfs_ridb2020and2021.rds")
+inyo_df <- ridb_df %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  filter(year == 2021)
+
+modoc_df <- ridb_df %>% 
+  filter(forestname == "Modoc National Forest") %>% 
+  filter(year == 2021)
+
+# maps
+## us geoms
+us_geoms <- readRDS("dashboard/df_state_geometries_us.rds")
+
+# visits by zip code
+ca_zip_visits_map <- readRDS("dashboard/ca_zip_visits_map.rds") %>%
+  filter(forestname == "Inyo National Forest") %>%
+  filter(year == 2021)
+
+# zips <- zip_code_db %>% 
+#   select(zipcode,
+#          population)
+# 
+# ca_zip_visits_map <- ca_zip_visits_map %>% left_join(zips, by = "zipcode")
+
+# ca zip codes
+ca_zips <- zip_code_db %>% 
+  filter(state == "CA")
+
+ca_zips_vec <- as.vector(unique(ca_zips$zipcode))
+
+# census
+
+# NOTEHD: not sure why this is NA....
+# mt_whit <- inyo_df %>% filter(park == "Mt. Whitney") %>% filter(is.na(sitetype) == TRUE)
+
+inyoNF_park <- inyo_df %>% filter(park == "Inyo National Forest")
+```
+
+
+```{r}
+#| label: map of inyo
+
+inyo_latlon <- inyo_df %>% 
+  group_by(park,
+           sitetype,
+           facilitylongitude,
+           facilitylatitude) %>% 
+  summarize(n = n())
+
+# camping icon
+  camping_icon <- makeIcon(
+    here("images/camping_location_icon.png"),
+    iconWidth = 25,
+    iconHeight = 25
+  )
+
+leaflet() %>% 
+  addPolygons(
+    data = inyo_sf,
+    weight = 1,
+    popup = paste0(inyo_sf$forestname)
+    ) %>% 
+  addMarkers(
+    lng = inyo_latlon$facilitylongitude,
+    lat = inyo_latlon$facilitylatitude,
+    popup = paste0("<strong>", inyo_latlon$park, "</strong>",
+                   "<br>",
+                   "Type of site: ",
+                   inyo_latlon$sitetype),
+    icon = camping_icon
+  ) %>% 
+  addProviderTiles(providers$CartoDB.Voyager)
+```
+
+
+```{r}
+#| label: park visits
+park_visits <- inyo_df %>% 
+  count(park)
+
+DT::datatable(park_visits,
+              options = list(
+                order = list(list(2, 'desc'))
+              )
+)
+
+# ggplot(data = inyo_df,
+#        aes(x = reorder(park, park,
+#                        function(x)-length(x)))) +
+#   geom_bar() + 
+#   coord_flip() +
+#   labs(x = NULL)
+```
+
+We see here majority of the visits come from California.
+
+```{r}
+#| label: visits by state
+
+# summarize ridb data
+summary_state_vists <- inyo_df %>%
+  group_by(year,
+           forestname,
+           customerstate) %>%
+  summarize(count = n())
+
+# join data
+sf_state_visits <- us_geoms %>% 
+  left_join(summary_state_vists,
+            by = c("state_abbrev" = "customerstate")) %>%
+  st_transform('+proj=longlat +datum=WGS84') %>% 
+  drop_na()
+
+# map
+bins <- c(0, 10, 50, 100, 230, 500, 800, 1000, 5000, 140000)
+pal <- colorBin("PuBuGn", domain = sf_state_visits$count, bins = bins)
+
+leaflet() %>%
+  setView(lat = 49.850033,
+          lng = -125.6500523,
+          zoom = 2) %>%
+  addPolygons(data = sf_state_visits,
+              weight = 1,
+              opacity = 2,
+              fillColor = ~ pal(count),
+              fillOpacity = 0.7,
+              color = "white", 
+              popup = paste0(
+                sf_state_visits$state_abbrev,
+                "<br>",
+                "Total number of visits: ",
+                scales::number_format(big.mark = ",")(sf_state_visits$count)
+              )
+  ) %>%
+  addLegend(
+    "topright",
+    title = "Number of Visits",
+    pal = pal,
+    values = bins,
+    opacity = 1
+  ) %>%
+  addProviderTiles(providers$CartoDB.Voyager)
+```
+
+
+```{r}
+#| label: visits by zip code
+
+bins <- c(0, 5, 10, 30, 55, 100, 800, 1000, 3000)
+pal <- colorBin("PuBuGn", domain = ca_zip_visits_map$count, bins = bins)
+
+leaflet() %>% 
+  setView(lat = 37.5000,
+          lng = -119.4179,
+          zoom = 5) %>% 
+  addPolygons(data = inyo_sf,
+              weight = 1,
+              opacity = 1,
+              color = "red") %>% 
+  addPolygons(data = ca_zip_visits_map,
+              weight = 0.5,
+              opacity = 1,
+              fillColor = ~ pal(count),
+              fillOpacity = 0.8,
+              color = "black",
+              popup = paste0(
+                "<strong>", "Visitor Home ZIP: ",
+                ca_zip_visits_map$zipcode, "</strong>",
+                "<br>",
+                ca_zip_visits_map$major_city,
+                "<br>",
+                ca_zip_visits_map$county,
+                "<br>",
+                "Total number of visits: ",
+                scales::number_format(big.mark = ",")(ca_zip_visits_map$count)
+              )
+              ) %>% 
+  addLegend(
+    "topright",
+    title = "Number of Visits",
+    pal = pal,
+    values = bins,
+    opacity = 1
+  ) %>% 
+  addProviderTiles(providers$CartoDB.Voyager)
+```
+
+The median number of counts for a CA ZIP code is 34. Let's get a sense of what the most visited and least visited ZIP codes look like. 
+
+High visiting ZIP codes are ZIP codes with more than 34 visits.
+Low visiting ZIP codes are ZIP does with 34 or less visits.
+
+```{r}
+#| label: top and least visited
+
+# median = 34; mean = 81.6
+ca_inyo_count <- inyo_df %>% 
+  group_by(customerzip) %>% 
+  summarize(count = n()) %>% 
+  filter(customerzip %in% ca_zips_vec)
+
+# 830 obs
+high <- ca_inyo_count %>% filter(count > 34)
+
+high_zip_vec <- as.vector(unique(high$customerzip))
+
+# 838 obs
+low <- ca_inyo_count %>% filter(count <= 34)
+
+low_zip_vec <- as.vector(unique(low$customerzip))
+```
+
+
+```{r}
+#| label:  race
+
+# ACS 5yr data 2017-2021
+# all zip codes
+acs_race <- get_acs(
+    geography = "zcta",
+    summary_var = "B03002_001",
+    #Estimate!!Total:
+    variables = c(
+      white = "B03002_003",
+      #Estimate!!Total!!Not Hispanic or Latino!!White alone
+      black = "B03002_004",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Black or African American alone
+      native_american = "B03002_005",
+      # Estimate!!Total:!!Not Hispanic or Latino!!American Indian and Alaska Native alone
+      asian = "B03002_006",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Asian alone
+      pacific_islander = "B03002_007",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Native Hawaiian and Other Pacific Islander alone
+      other = "B03002_008",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Some other race alone
+      multiracial = "B03002_009",
+      # Estimate!!Total:!!Not Hispanic or Latino!!Two or more races
+      hispanic_latinx = "B03002_012" # Estimate!!Total!!Hispanic or Latino
+    )
+  )
+
+# just CA ZIPS
+ca_acs_race <- acs_race %>% 
+  clean_names() %>%
+  rename(race = variable) %>%
+  rename(zipcode = geoid) %>% 
+  rename(total_population_est = summary_est) %>% 
+  rename(total_population_moe = summary_moe) %>% 
+  # keep only ZIPs in CA; ca_zips_vec from zipcodeR package
+  filter(zipcode %in% ca_zips_vec) %>% 
+  select(!name)
+
+saveRDS(ca_acs_race, "dashboard/ca_acs_race.rds")
+
+# calculate summary stats
+ca_race_calc <- ca_acs_race %>% 
+  mutate(
+    percent = (estimate / total_population_est),
+    lower_bound = estimate - moe,
+    upper_bound = estimate + moe,
+    lower_percentage = (lower_bound / total_population_est),
+    upper_percentage = (upper_bound / total_population_est),
+  )
+
+ca_race_calc_pct <- ca_race_calc %>% 
+  select(zipcode,
+         race,
+         total_population_est,
+         percent) %>% 
+  pivot_wider(names_from = "race",
+              values_from = "percent")
+
+# join with inyo ridb
+inyo_race <- left_join(inyo_df, ca_race_calc_pct, by = c("customerzip" = "zipcode"))
+
+agg_inyo_race <- inyo_race %>%
+  # filter variables of interest
+  select(
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white,
+    total_population_est
+  ) %>% 
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  filter(race_percentage >= weighted_quartile) %>%
+  group_by(race) %>% 
+  summarize(count = n()) %>% 
+  # update racial category name strings for plotting
+  mutate(
+    race = str_replace(
+      string = race,
+      pattern = "_",
+      replacement = " "
+    ),
+    race = str_to_title(race),
+    race = str_replace(
+      string = race,
+      pattern = "Other",
+      replacement = "Other Race(s)"
+    )
+  )
+
+# looks pretty similar to me...
+agg_ca_race <- ca_race_calc %>% 
+  group_by(race) %>% 
+  summarize(mean_pct = mean(percent, na.rm = TRUE))
+
+# high 
+high_inyo_race <- inyo_race %>%
+  # filter variables of interest
+  select(
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white,
+    total_population_est
+  ) %>% 
+  filter(customerzip %in% high_zip_vec) %>% 
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+   # filter(race_percentage >= weighted_quartile) %>%
+  group_by(race) %>% 
+  # summarize(count = n())
+  summarize(mean_pct = mean(race_percentage, na.rm = TRUE))
+
+# low
+low_inyo_race <- inyo_race %>%
+  # filter variables of interest
+  select(
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white,
+    total_population_est
+  ) %>% 
+  filter(customerzip %in% low_zip_vec) %>% 
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  # filter(race_percentage >= weighted_quartile) %>%
+  group_by(race) %>% 
+  summarize(count = n())
+  # summarize(mean_pct = mean(race_percentage, na.rm = TRUE))
+
+
+# join with modoc ridb
+modoc_race <- left_join(modoc_df, ca_race_calc_pct, by = c("customerzip" = "zipcode"))
+
+agg_modoc_race <- modoc_race %>%
+  # filter variables of interest
+  select(
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white,
+    total_population_est
+  ) %>% 
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  group_by(race) %>% 
+  summarize(mean_pct = mean(race_percentage, na.rm = TRUE))
+```
+
+
+```{r}
+#| label: race summary plot
+plt <- ggplot(data = agg_inyo_race) +
+  geom_col(aes(x = count, 
+               y = reorder(race, count),
+               text = paste0(
+                 scales::comma(count, accuracy = 1),
+                 " reservations were made<br>by people who live in<br>ZIP codes with high<br>",
+                 race,
+                 " populations."
+               )),
+           fill = "#64863C") +
+  scale_x_continuous(labels = comma_format(accuracy = 1)) +
+  scale_y_discrete(expand = c(0.1, 0)) +
+  labs(title = NULL,
+       y = NULL,
+       x = "Number of Reservations") +
+  theme_minimal()
+
+plotly::ggplotly(plt,
+                 tooltip = list("text")) %>%
+  config(
+    modeBarButtonsToRemove = list(
+      "zoom",
+      "pan",
+      "select",
+      "zoomIn",
+      "zoomOut",
+      "lasso2d",
+      "resetScale2d",
+      "autoScale2d",
+      "hoverClosestCartesian",
+      "hoverCompareCartesian"
+    )
+  ) %>%
+  layout(title = list(
+    text = paste0(
+      "Number of Reservations to this site coming from<br>ZIP codes with high proportions of:"
+    ),
+    font = list(size = 14.5)
+  ))
+```
+
+
+
+```{r}
+#| label: calc race old
+# calculate percentage
+percent_ca_acs_race <- ca_acs_race %>%
+  group_by(zipcode, race) %>%
+  summarize(
+    estimate = sum(estimate),
+    moe = sum(moe),
+    summary_est = unique(total_population_est),
+    summary_moe = unique(total_population_moe),
+    percent = estimate / total_population_est
+  )
+# create column for each percentage for each group (pivot wider)
+# necessary to be able to left_join() with RIDB data
+percent_wider_ca_acs_race <- percent_ca_acs_race %>%
+  select(zipcode, summary_est, race, percent) %>%
+  rename(zip_code_population = summary_est) %>%
+  pivot_wider(names_from = "race",
+              values_from = "percent")
+```
+
+
+```{r}
+#| label:  race top quartile
+acs_race_top <- ca_race_calc_pct %>%
+  pivot_longer(cols = 3:10,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  drop_na(race_percentage)
+
+# weighted median value (weighted based on ZIP code populations)
+weighted_half <- weighted.mean(x = acs_race_top$race_percentage,
+                               w = acs_race_top$total_population_est)
+
+# drop rows below weighted median
+df_half <- acs_race_top %>% filter(race_percentage >= weighted_half)
+
+# weighted 3rd quartile -- weighted median value of top half (weighted based on ZIP code populations)
+weighted_quartile <-  weighted.mean(x = df_half$race_percentage,
+                                    w = df_half$total_population_est)
+```
+
+
+```{r}
+#| label: add high & low freq
+
+inyo_race_freq <- inyo_race %>% 
+  mutate(
+    visit_freq = case_when(customerzip %in% high_zip_vec ~ "High",
+                           customerzip %in% low_zip_vec ~ "Low",
+                           TRUE ~ NA_character_)
+  )
+```
+
+
+```{r}
+#| label: inyo race weighted
+inyo_race_plt_df <- inyo_race %>%
+  # select variables of interest
+  select(
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white
+  ) %>%
+  pivot_longer(cols = 2:9,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  # filter rows that fall above 3rd quartile value
+  filter(race_percentage >= weighted_quartile) %>%
+  # updated racial category name strings for plotting
+  mutate(
+    race = str_replace(
+      string = race,
+      pattern = "_",
+      replacement = " "
+    ),
+    race = str_to_title(race),
+    race = str_replace(
+      string = race,
+      pattern = "Other",
+      replacement = "Other Race(s)"
+    )
+  ) %>%
+  group_by(race) %>%
+  summarize(count = n())
+```
+
+Visits to Inyo NF are made by people who live in ZIP codes with high White populations.
+
+So let's look at what your visitors look like who are not living in ZIP codes with high White Populations.
+
+```{r}
+inyo_race_freq_plt <- inyo_race_freq %>% 
+    # select variables of interest
+  select(
+    park,
+    sitetype,
+    customerzip,
+    visit_freq,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white
+  ) %>%
+  pivot_longer(cols = 5:12,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  # filter rows that fall above 3rd quartile value
+  filter(race_percentage >= weighted_quartile) %>%
+  # updated racial category name strings for plotting
+  mutate(
+    race = str_replace(
+      string = race,
+      pattern = "_",
+      replacement = " "
+    ),
+    race = str_to_title(race),
+    race = str_replace(
+      string = race,
+      pattern = "Other",
+      replacement = "Other Race(s)"
+    )
+  ) %>% 
+  group_by(visit_freq,
+           race) %>% 
+  summarize(count = n())
+  
+```
+
+
+
+```{r}
+ggplot(data = inyo_race_freq_plt) +
+  geom_col(aes(x = count,
+               y = reorder(race, count),
+               fill = visit_freq),
+           position = "dodge") + 
+  theme_minimal() +
+  labs(y = NULL) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+
+```{r}
+ggplot(data = ridb_race_plt_df %>% filter(forestname == "Inyo National Forest")) +
+  geom_col(aes(x = count,
+               y = reorder(race, count),
+               fill = sitetype),
+           position = "dodge") + 
+  theme_minimal() +
+  labs(y = NULL) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+
+```{r}
+#| label: education
+
+acs_edu <-
+  get_acs(
+    geography = "zcta",
+    summary_var = "B15003_001",
+    # Estimate!!Total:
+    variables = c(
+      # Estimate!!Total:!!GED or alternative credential or below (including above)
+      hs_GED_or_below = "B15003_002",
+      hs_GED_or_below = "B15003_003",
+      hs_GED_or_below = "B15003_004",
+      hs_GED_or_below = "B15003_005",
+      hs_GED_or_below = "B15003_006",
+      hs_GED_or_below = "B15003_007",
+      hs_GED_or_below = "B15003_008",
+      hs_GED_or_below = "B15003_009",
+      hs_GED_or_below = "B15003_010",
+      hs_GED_or_below = "B15003_011",
+      hs_GED_or_below = "B15003_012",
+      hs_GED_or_below = "B15003_013",
+      hs_GED_or_below = "B15003_014",
+      hs_GED_or_below = "B15003_015",
+      hs_GED_or_below = "B15003_016",
+      hs_GED_or_below = "B15003_017",
+      hs_GED_or_below = "B15003_018",
+      # Estimate!!Total:!!Some college
+      some_college = "B15003_019",
+      some_college = "B15003_020",
+      # Estimate!!Total:!!Associates or bachelors degree
+      college = "B15003_021",
+      college = "B15003_022",
+      # Estimate!!Total:!!Masters degree and above
+      master_or_above = "B15003_023",
+      master_or_above = "B15003_024",
+      master_or_above = "B15003_025"
+    )
+  )
+
+# just CA ZIPS
+ca_acs_edu <- acs_edu %>% 
+  clean_names() %>%
+  rename(education = variable) %>%
+  # create column of 5 digit ZIP code
+  mutate(zip_code = str_sub(name, start = -5, end = -1)) %>% 
+  # keep only ZIPs in CA; ca_zips_vec from zipcodeR package
+  filter(zip_code %in% ca_zips_vec)
+
+
+# calculate percentage
+edu_percent <-
+  ca_acs_edu %>%
+  group_by(zip_code, education) %>%
+  summarize(
+    estimate = sum(estimate),
+    moe = sum(moe),
+    summary_est = unique(summary_est),
+    summary_moe = unique(summary_moe),
+    percent = estimate / summary_est
+  )
+# create column for each percentage for each group (pivot wider)
+# necessary to be able to left_join() with RIDB data
+edu_percent_wider <-
+  edu_percent %>%
+  select(zip_code, summary_est, education, percent) %>%
+  rename(zip_code_population = summary_est) %>%
+  pivot_wider(names_from = education,
+              values_from = percent)
+```
+
+
+```{r}
+#| label: join edu and inyo data
+
+ridb_acs_edu <- left_join(inyo_df, edu_percent_wider,
+                           by = c("customerzip" = "zip_code"))
+```
+
+
+```{r}
+#| label: edu plt
+data_plot_education_ridb <- ridb_acs_edu %>%
+  summarize(
+    hs_GED_or_below = mean(hs_GED_or_below, na.rm = TRUE),
+    some_college = mean(some_college, na.rm = TRUE),
+    college = mean(college, na.rm = TRUE),
+    master_or_above = mean(master_or_above, na.rm = TRUE)
+  )  %>%
+  pivot_longer(cols = 1:4,
+               names_to = "education",
+               values_to = "education_percent_average")
+```
+
+
+
+
+
+```{r}
+#| label: booking window
+
+inyo_bw <- inyo_df %>% 
+  filter(bookingwindow > 0,
+         bookingwindow != "Inf") %>%
+  select(bookingwindow) %>%
+  filter(!is.na(bookingwindow))
+
+x_max <- (round(max(inyo_bw$bookingwindow) / 5) * 5) + 5 # max x rounded to nearest 5
+
+quant_80 <- quantile(x = inyo_bw$bookingwindow,
+                     probs = seq(0, 1, 0.1))[[9]] %>% round(0)
+
+# parameters
+hist_colors <- c("#64863C", "#466C04")
+quant_80_color <- c("#FACE00")
+caption_color <- c("#ac8d00")
+
+plotly <- ggplot(data = inyo_bw) +
+  geom_histogram(
+    aes(
+      x = bookingwindow,
+      text = paste0(
+        scales::percent(..count.. / nrow(inyo_bw), accuracy = 0.1),
+        " of all visits are reserved between ",
+        scales::comma(xmin, accuracy = 1),
+        " and ",
+        scales::comma(xmax, accuracy = 1),
+        " days before the start of the visit",
+        "<br>",
+        "(Total reservations: ",
+        scales::comma(nrow(inyo_bw), accuracy = 1),
+        ")"
+      )
+    ),
+    binwidth = 7,
+    center = 7 / 2,
+    fill = hist_colors[[1]],
+    col = hist_colors[[2]],
+    linewidth = 0.05
+  ) +
+  labs(x = "Days in advance before visit (each bar = 1 week)",
+       y = "") +
+  scale_x_continuous(limits = c(0, x_max)) +
+  geom_vline(
+    xintercept = quant_80,
+    linetype = "dashed",
+    alpha = 0.5,
+    color = quant_80_color
+  ) +
+  theme_minimal() +
+  theme(plot.background = element_rect("white"),
+        panel.grid.major.y = element_blank())
+
+# add 6 month / 1 year annotation if data allows
+if (x_max <= 180) {
+  # don't include 6 month or 1 year annotation
+  plotly
+  
+} else if (x_max > 180 & x_max <= 360) {
+  # include 6 month annotation
+  plotly <- plotly +
+    geom_vline(
+      xintercept = 180,
+      linetype = "dashed",
+      size = .3,
+      alpha = .5
+    ) +
+    annotate(
+      "text",
+      label = "6 months",
+      size = 3,
+      x = 180,
+      y = 5
+    )
+  
+} else if (x_max >= 360) {
+  # include 6 month and 1 year annotation
+  plotly <- plotly +
+    geom_vline(
+      xintercept = 180,
+      linetype = "dashed",
+      size = .3,
+      alpha = .5
+    ) +
+    annotate(
+      "text",
+      label = "6 months",
+      size = 3,
+      x = 180,
+      y = 5
+    ) +
+    geom_vline(
+      xintercept = 360,
+      linetype = "dashed",
+      size = .3,
+      alpha = .5
+    ) +
+    annotate(
+      "text",
+      label = "1 year",
+      size = 3,
+      x = 360,
+      y = 5
+    )
+} # EO else if for plotly
+
+ggplotly(plotly,
+         tooltip = list("text"),
+         dynamicTicks = TRUE) %>%
+  layout(
+    title = list(
+      text = paste0(
+        '<b>',
+        "Inyo National Forest",
+        '</b>',
+        '<br>',
+        'Number of days from reservation to start of visit'
+      ),
+      font = list(size = 15)
+    ),
+    xaxis = list(separatethousands = TRUE),
+    yaxis = list(separatethousands = TRUE),
+    margin = list(b = 130, t = 100),
+    annotations =  list(
+      x = x_max / 2,
+      y = -0.6,
+      text = paste0(
+        "80% of reservations reserve their visit less than ",
+        '<b>',
+        quant_80,
+        '</b>',
+        " days before the start date",
+        "<br>",
+        "(shown on plot with yellow dotted line)."
+      ),
+      showarrow = F,
+      xre = 'paper',
+      yref = 'paper',
+      xanchor = 'middle',
+      yanchor = 'auto',
+      xshift = 0,
+      yshift = 0,
+      font = list(size = 12, color = caption_color)
+    )
+  ) %>%
+  config(
+    modeBarButtonsToRemove = list(
+      "pan",
+      "select",
+      "lasso2d",
+      "autoScale2d",
+      "hoverClosestCartesian",
+      "hoverCompareCartesian"
+    )
+  )
+```
+
+
+## Race by CA
+
+```{r}
+  race_rdf <- reactive ({
+    
+    # join with inyo ridb
+    ridb_race <-
+      left_join(ridb_df, ca_race_calc_pct, by = c("customerzip" = "zipcode"))
+    
+   test <-  ridb_race %>%
+      filter(forestname == "Inyo National Forest") %>%
+      filter(year == 2021) %>%
+      # filter(forestname == input$forest) %>%
+      # filter(forestname == input$year) %>%
+      summarize(white = mean(white, na.rm = TRUE),
+                black = mean(black, na.rm = TRUE),
+                asian = mean(asian, na.rm = TRUE),
+                multiracial = mean(multiracial, na.rm = TRUE),
+                other = mean(other, na.rm = TRUE),
+                native_american = mean(native_american, na.rm = TRUE),
+                pacific_islander = mean(pacific_islander, na.rm = TRUE),
+                hispanic_latinx = mean(hispanic_latinx, na.rm = TRUE)) %>%
+      pivot_longer(cols = 1:8, names_to = "race", values_to = "race_percent_average") %>% 
+      mutate(race = str_replace(string = race,
+                                pattern = "_",
+                                replacement = " "),
+             race = str_to_title(race))
+    
+  }) # EO RDF
+  
+  # non RDFs
+  # CA population
+  race_ca <- ca_race_calc_pct %>%
+    summarize(white = weighted.mean(white, total_population_est, 
+                                    na.rm = TRUE),
+              black = weighted.mean(black,  total_population_est,
+                                    na.rm = TRUE),
+              asian = weighted.mean(asian, total_population_est, 
+                                    na.rm = TRUE),
+              multiracial = weighted.mean(multiracial, total_population_est, 
+                                          na.rm = TRUE),
+              other = weighted.mean(other, total_population_est, 
+                                    na.rm = TRUE),
+              native_american = weighted.mean(native_american, total_population_est, 
+                                              na.rm = TRUE),
+              pacific_islander = weighted.mean(pacific_islander, total_population_est, 
+                                               na.rm = TRUE),
+              hispanic_latinx = weighted.mean(hispanic_latinx, total_population_est, 
+                                              na.rm = TRUE)) %>%
+    pivot_longer(cols = 1:8, names_to = "race", values_to = "race_percent_average") %>% 
+    mutate(race = str_replace(string = race,
+                              pattern = "_",
+                              replacement = " "),
+           race = str_to_title(race))
+  
+ # join data for plotting
+  race_data_plot <- test %>%
+    left_join(y = race_ca,
+              by = c("race"),
+              suffix = c("_ridb", "_ca")) %>% 
+    rename(RIDB = race_percent_average_ridb,
+           CA = race_percent_average_ca) %>% 
+    pivot_longer(cols = 2:3,
+                 names_to = "data_source",
+                 values_to = "race_percent_average") %>% 
+    mutate(data_source = factor(data_source, levels = c("RIDB", "CA")),
+           tooltip_start = case_when(data_source == "RIDB" ~ "Visitors live in communities with an estimated ",
+                                     data_source == "CA" ~ ""),
+           tooltip_middle = case_when(data_source == "RIDB" ~ " ",
+                                      data_source == "CA" ~ " of Californians are "),
+           tooltip_end = case_when(data_source == "RIDB" ~ " population",
+                                   data_source == "CA" ~ ""),
+           race = str_replace(string = race,
+                              pattern = "Other",
+                              replacement = "Other Race(s)"),
+           race = factor(race, ordered = TRUE,
+                         levels = c("Hispanic Latinx", "White", "Asian", "Black", "Multiracial",
+                                    "Native American", "Pacific Islander", "Other Race(s)")))
+  
+  x_max <- max(race_data_plot$race_percent_average) + 0.1 # max x rounded to nearest 5
+  
+  # parameters
+  groups_colors_ridb_ca <- c("RIDB" = "#64863C", "CA" = "#a3a3a3")
+  text_colors_ridb_ca <- c("RIDB" = "#466C04", "CA" = "#848484")
+  
+  # plot for shiny app
+  race_plotly <- ggplot(data = race_data_plot) +
+    geom_col(aes(
+      x = race_percent_average,
+      y = reorder(race, desc(race)),
+      fill = data_source,
+      text = paste0(
+        tooltip_start,
+        scales::percent(race_percent_average, accuracy = 0.1),
+        tooltip_middle,
+        race,
+        tooltip_end
+      )
+    ),
+    position = "dodge") +
+    scale_x_continuous(labels = percent, limits = c(0, x_max)) +
+    scale_fill_manual(values = groups_colors_ridb_ca) +
+    # geom_text(
+    #   aes(
+    #     x = race_percent_average,
+    #     y = reorder(race, desc(race)),
+    #     label = scales::percent(race_percent_average, accuracy = 0.1),
+    #     col = data_source
+    #   ),
+    #   position = position_dodge(width = 1),
+    #   size = 3
+    # ) +
+    scale_color_manual(values = text_colors_ridb_ca) +
+    labs(x = "Percentage (%)",
+         y = "") +
+    theme_minimal()
+  race_plotly
+  
+  ggplotly(race_plotly,
+           tooltip = list("text")
+           ) %>%
+    # style(textposition = "right") %>% 
+    layout(
+      # title = list(text = paste0("Inyo National Forest", '<br>',
+      #                                 'Estimated Racial Percentages of California Residents vs. Visitors'),
+      #                   font = list(size = 15)),
+           showlegend = FALSE) %>%
+    config(modeBarButtonsToRemove = list("pan", "select", "lasso2d", "autoScale2d", 
+                                         "hoverClosestCartesian", "hoverCompareCartesian"))
+```
+
+
+```{r}
+#| label: explore where non-white zips are going
+
+acs_race_top <- ca_race_calc_pct %>%
+  pivot_longer(cols = 3:10,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  drop_na(race_percentage)
+
+# weighted median value (weighted based on ZIP code populations)
+weighted_half <- weighted.mean(x = acs_race_top$race_percentage,
+                               w = acs_race_top$total_population_est)
+
+# drop rows below weighted median
+df_half <- acs_race_top %>% filter(race_percentage >= weighted_half)
+
+# weighted 3rd quartile -- weighted median value of top half (weighted based on ZIP code populations)
+weighted_quartile <-  weighted.mean(x = df_half$race_percentage,
+                                    w = df_half$total_population_est)
+
+inyo_nonwhite_df <- inyo_race %>%
+  # filter variables of interest
+  select(
+    year,
+    forestname,
+    park,
+    sitetype,
+    customerzip,
+    asian,
+    black,
+    hispanic_latinx,
+    multiracial,
+    native_american,
+    other,
+    pacific_islander,
+    white
+  ) %>% 
+  pivot_longer(cols = 6:13,
+               names_to = "race",
+               values_to = "race_percentage") %>%
+  filter(race_percentage >= weighted_quartile) %>%
+  # update racial category name strings for plotting
+  mutate(
+    race = str_replace(
+      string = race,
+      pattern = "_",
+      replacement = " "
+    ),
+    race = str_to_title(race),
+    race = str_replace(
+      string = race,
+      pattern = "Other",
+      replacement = "Other Race(s)"
+    )
+  ) %>% 
+  filter(race != "White")
+
+
+test <- inyo_nonwhite_df %>% 
+  filter(year == 2021) %>% 
+  filter(forestname == "Inyo National Forest") %>% 
+  group_by(park,
+           race) %>% 
+  summarize(count = n()) %>% 
+  filter(race == "Asian")
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

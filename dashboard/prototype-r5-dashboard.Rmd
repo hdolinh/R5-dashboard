@@ -1,5 +1,5 @@
 ---
-title: "R5 Rec-Shed Dashboard"
+title: "R5 Rec-Shed Dashboard - Prototype"
 output:
   flexdashboard::flex_dashboard:
     orientation: rows
@@ -86,9 +86,11 @@ shiny::selectInput("forest", label = "Select a forest:",
                    selected = "Inyo National Forest")
 ```
 
-Add explanatory text here
+**Metropolitan Group Demo Dashboard for USFS R5 RLT - Not for Public Use**
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+Select a year and a forest to change the visualizations on the right.
+
+Dashboard prototype was developed by [Halina Do-Linh](https://github.com/hdolinh) and is based on the [Outdoor Equity App](https://github.com/outdoor-equity), a Shiny web app that explore patterns of visitor use of reservable overnight sites (such as campgrounds, cabins, hike-in, and more) to support equitable access to the outdoors.
 
 ## Row 1 {data-width=500} {data-height=400}
 
