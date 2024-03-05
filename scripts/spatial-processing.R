@@ -1,49 +1,29 @@
-## NOTES HD ##
 # fp = file path
 # df = data frame
 # vec = vector
+# shp = shapefile
 
-# testing ----
-# library(tidyr) # load to use ` %>% `
-# spatial_data <- here::here("data/spatial/raw/S_USA.AdministrativeForest/")
-# spatial_clean <- sf::read_sf(spatial_data) %>%
-#   janitor::clean_names() %>%
-#   dplyr::filter(region == "05")
-# 
-# forestname_vec <- as.vector(unique(spatial_clean$forestname))
-# 
-# mapview::mapview(spatial_clean)
+# 0. setup ----
+library(here)
+library(sf)
+library(tidyr)
+library(dplyr)
+library(janitor)
+library(mapview)
 
-# 1. get_spatial_data() ----
-get_spatial_data <- function(fp, raw_df){
-  
-  df <- here::here(fp)
-  raw_df <- sf::read_sf(df) %>% janitor::clean_names()
-  
-  return(raw_df)
-}
+# 1. load spatial data ----
+fp <- here::here("data/spatial/raw/S_USA.AdministrativeForest/")
+raw_df <- sf::read_sf(fp) %>% janitor::clean_names()
 
-# 2. r5_bounds() ----
-r5_bounds <- function(raw_df, clean_df){
-  
-  clean_df <- raw_df %>% dplyr::filter(region == "05")
-  
-  return(clean_df)
-}
-# NOTEHD: To quickly view the spatial data as a map run:
-# mapview::mapview(clean_df)
+# 2. subset to R5 ----
+r5_df <- raw_df %>% dplyr::filter(region == "05")
 
-# 3. r5_forestnames() ----
-r5_forestnames <- function(clean_df, forestname_vec){
-  
-  forestname_vec <- as.vector(unique(clean_df$forestname))
-  
-  # forestname_vec used in ridb_processing.R to filter out non-R5 forests
-  return(forestname_vec)
-}
+# To quickly view the spatial data as a map run:
+# mapview::mapview(r5_df)
 
-# 4. r5_bounds_csv() ----
-r5_bounds_csv <- function(clean_df, fp){
-  
-  sf::write_sf(clean_df, here(fp))
-}
+# 3. save R5 forestnames ----
+# forestname_vec used in ridb_processing.R to filter out non-R5 forests
+forestname_vec <- as.vector(unique(r5_df$forestname))
+
+# 4. save spatial data as a shp ----
+sf::write_sf(r5_df, here::here("data/spatial/clean/r5_bounds.shp"))
